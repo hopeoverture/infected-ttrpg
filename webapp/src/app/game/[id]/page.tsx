@@ -24,9 +24,13 @@ import { GameErrorBoundary } from '@/components/ErrorBoundary';
 import QuickActions from '@/components/game/QuickActions';
 import CombatTracker from '@/components/game/CombatTracker';
 import MobileNav, { CharacterMiniStatus, MobileTab } from '@/components/game/MobileNav';
+import SettingsPanel, { GameSettings, DEFAULT_SETTINGS } from '@/components/game/SettingsPanel';
 
 // Hooks
 import { useAudioNarration } from '@/hooks/useAudioNarration';
+
+// Types for guts spending
+type GutsUse = 'reroll' | 'damage' | 'find' | 'enough' | 'stand' | 'flashback';
 
 // Types for GM API responses
 interface GMStateChanges {
@@ -80,6 +84,9 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('story');
   const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
+  const [pendingGutsUse, setPendingGutsUse] = useState<GutsUse | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const gameIdRef = useRef<string>(resolvedParams.id);
   const lastGMMessageIdRef = useRef<string | null>(null);
@@ -110,6 +117,18 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
       }
     }
     loadGame();
+  }, []);
+
+  // Load settings from localStorage
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('infected-settings');
+    if (savedSettings) {
+      try {
+        setSettings(JSON.parse(savedSettings));
+      } catch {
+        // Invalid JSON, use defaults
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -290,6 +309,82 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
 
     return updates;
   }, []);
+
+  // Handle spending guts
+  const handleSpendGuts = useCallback((use: GutsUse | string) => {
+    if (!gameState || gameState.character.guts < 1) return;
+    
+    const gutsUse = use as GutsUse;
+    
+    // Deduct guts
+    const updatedCharacter = {
+      ...gameState.character,
+      guts: gameState.character.guts - 1
+    };
+
+    // Apply the effect based on use type
+    let effectMessage = '';
+    let additionalPrompt = '';
+    
+    switch (gutsUse) {
+      case 'reroll':
+        setPendingGutsUse('reroll');
+        effectMessage = '🎲 **Guts Spent: Reroll!** Your next failed roll can be rerolled.';
+        break;
+        
+      case 'damage': {
+        const wounds = { ...updatedCharacter.wounds };
+        if (wounds.bleeding > 0) wounds.bleeding -= 1;
+        else if (wounds.bruised > 0) wounds.bruised -= 1;
+        updatedCharacter.wounds = wounds;
+        effectMessage = '🛡️ **Guts Spent: Reduce Damage!** You shrug off some of the pain.';
+        break;
+      }
+        
+      case 'find':
+        effectMessage = '🔍 **Guts Spent: Lucky Find!** Describe what you\'re looking for.';
+        additionalPrompt = '[GUTS ACTIVE: Find Item] ';
+        break;
+        
+      case 'enough':
+        effectMessage = '🎯 **Guts Spent: Just Enough!** You have exactly what you need.';
+        additionalPrompt = '[GUTS ACTIVE: Just Enough] ';
+        break;
+        
+      case 'stand':
+        effectMessage = '💀 **Guts Spent: Last Stand!** You push through the pain for one more action.';
+        additionalPrompt = '[GUTS ACTIVE: Last Stand] ';
+        break;
+        
+      case 'flashback':
+        effectMessage = '💭 **Guts Spent: Flashback!** Describe a past preparation that helps now.';
+        additionalPrompt = '[GUTS ACTIVE: Flashback] ';
+        break;
+        
+      default:
+        effectMessage = '🔥 **Guts Spent!**';
+    }
+
+    // Pre-fill input with prompt if applicable
+    if (additionalPrompt) {
+      setInput(additionalPrompt);
+    }
+
+    const gutsMessage: Message = {
+      id: `msg-${Date.now()}`,
+      role: 'system',
+      content: effectMessage,
+      timestamp: new Date()
+    };
+
+    setGameState(prev => prev ? {
+      ...prev,
+      character: updatedCharacter,
+      messages: [...prev.messages, gutsMessage]
+    } : null);
+
+    saveGameState({ character: updatedCharacter });
+  }, [gameState, saveGameState]);
 
   // Call the GM API
   const callGM = useCallback(async (action: string, rollResult?: RollResult): Promise<GMApiResponse> => {
@@ -479,6 +574,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
           <div className="flex items-center gap-3">
             <MuteToggle isMuted={isMuted} onToggle={toggleMute} />
             <button 
+              onClick={() => setSettingsOpen(true)}
               className="text-secondary hover:text-primary transition-colors text-sm"
               aria-label="Open game settings"
             >
@@ -659,13 +755,47 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
         <div className="w-64 border-l border-subtle overflow-y-auto flex-shrink-0 hidden md:block">
           <GameStatePanel 
             gameState={gameState}
-            onSpendGuts={(use) => {
-              console.log('Spending guts:', use);
-              // TODO: Implement guts spending
-            }}
+            onSpendGuts={handleSpendGuts}
           />
         </div>
       </div>
+      
+      {/* Mobile Tab Content Overlays */}
+      {mobileTab !== 'story' && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div 
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileTab('story')}
+          />
+          <div className="absolute bottom-16 left-0 right-0 max-h-[70vh] bg-bg-surface border-t border-subtle overflow-y-auto animate-slide-up">
+            {mobileTab === 'character' && (
+              <CharacterPanel character={gameState.character} />
+            )}
+            {mobileTab === 'world' && (
+              <GameStatePanel 
+                gameState={gameState}
+                onSpendGuts={handleSpendGuts}
+              />
+            )}
+            {mobileTab === 'log' && (
+              <div className="p-4">
+                <h3 className="panel-label mb-3">Message Log</h3>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {gameState.messages.slice(-20).reverse().map((msg) => (
+                    <div key={msg.id} className="text-sm border-b border-subtle pb-2">
+                      <div className="flex justify-between text-xs text-muted mb-1">
+                        <span className="uppercase">{msg.role}</span>
+                        <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div className="text-secondary line-clamp-2">{msg.content}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       
       {/* Mobile Navigation */}
       <MobileNav
@@ -673,6 +803,18 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
         onTabChange={setMobileTab}
         character={gameState.character}
         threat={gameState.threat}
+      />
+      
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onSave={(newSettings) => {
+          setSettings(newSettings);
+          // Could persist to localStorage or database here
+          localStorage.setItem('infected-settings', JSON.stringify(newSettings));
+        }}
       />
     </div>
     </GameErrorBoundary>
