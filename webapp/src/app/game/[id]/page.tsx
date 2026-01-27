@@ -2,17 +2,8 @@
 
 import { useState, useEffect, useRef, use, useCallback } from 'react';
 import Link from 'next/link';
-// import { useRouter } from 'next/navigation';
-import { 
-  GameState, 
-  Message, 
-  RollResult,
-  ThreatState,
-  TimeOfDay,
-  LightLevel,
-  Scarcity
-} from '@/lib/types';
-import { getGame, updateGame, addMessage } from '@/lib/supabase/games';
+import { useRouter } from 'next/navigation';
+import { GameState, Message, RollResult } from '@/lib/types';
 
 // Components
 import CharacterPanel from '@/components/game/CharacterPanel';
@@ -21,77 +12,72 @@ import DiceRoll from '@/components/game/DiceRoll';
 import SceneImage from '@/components/game/SceneImage';
 import AudioNarration, { MuteToggle } from '@/components/game/AudioNarration';
 import { GameErrorBoundary } from '@/components/ErrorBoundary';
-import QuickActions from '@/components/game/QuickActions';
+import QuickActions, { QuickActionsRef } from '@/components/game/QuickActions';
 import CombatTracker from '@/components/game/CombatTracker';
 import MobileNav, { CharacterMiniStatus, MobileTab } from '@/components/game/MobileNav';
 import SettingsPanel, { GameSettings, DEFAULT_SETTINGS } from '@/components/game/SettingsPanel';
+import SaveIndicator from '@/components/game/SaveIndicator';
+import KeyboardHelpOverlay from '@/components/game/KeyboardHelpOverlay';
+import BreakingPointModal from '@/components/game/BreakingPointModal';
+import InfectionCheckModal from '@/components/game/InfectionCheckModal';
+import DeathSceneModal from '@/components/game/DeathSceneModal';
 
 // Hooks
+import { useGameSession, GMApiResponse } from '@/hooks/useGameSession';
 import { useAudioNarration } from '@/hooks/useAudioNarration';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useSaveStatus } from '@/hooks/useSaveStatus';
 
-// Types for guts spending
+// Types
 type GutsUse = 'reroll' | 'damage' | 'find' | 'enough' | 'stand' | 'flashback';
-
-// Types for GM API responses
-interface GMStateChanges {
-  threat?: number | null;
-  threatState?: ThreatState | null;
-  stress?: number | null;
-  wounds?: { type: 'bruised' | 'bleeding' | 'broken' | 'critical'; change: number } | null;
-  guts?: number | null;
-  location?: {
-    name: string;
-    description: string;
-    lightLevel: LightLevel;
-    scarcity: Scarcity;
-    ambientThreat: number;
-  } | null;
-  time?: TimeOfDay | null;
-  day?: number | null;
-  inventory?: { add?: string[]; remove?: string[] } | null;
-  objectives?: { add?: string[]; complete?: string[] } | null;
-}
-
-interface GMApiResponse {
-  narrative: string;
-  stateChanges: GMStateChanges;
-  roll: {
-    type: string;
-    attribute: string;
-    skill: string;
-    modifier?: number;
-    reason?: string;
-    result?: RollResult;
-    description?: string;
-  } | null;
-  combatStarted?: boolean;
-  infectionCheck?: boolean;
-  breakingPoint?: boolean;
-  sceneChanged?: boolean;
-  sceneDescription?: string | null;
-  error?: string;
-  details?: string;
-}
 
 export default function GameSession({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
-  const [gameState, setGameState] = useState<GameState | null>(null);
+  const router = useRouter();
+  
+  // UI State
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [currentSceneDescription, setCurrentSceneDescription] = useState<string | null>(null);
-  const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('story');
-  const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
-  const [pendingGutsUse, setPendingGutsUse] = useState<GutsUse | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const gameIdRef = useRef<string>(resolvedParams.id);
-  const lastGMMessageIdRef = useRef<string | null>(null);
+  const [currentSceneDescription, setCurrentSceneDescription] = useState<string | null>(null);
+  const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null);
+  const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
   
-  // Audio narration hook
+  // Modal State
+  const [breakingPointOpen, setBreakingPointOpen] = useState(false);
+  const [infectionCheckOpen, setInfectionCheckOpen] = useState(false);
+  const [infectionContext, setInfectionContext] = useState('');
+  const [deathOpen, setDeathOpen] = useState(false);
+  const [deathCause, setDeathCause] = useState('');
+  const [pendingRollResult, setPendingRollResult] = useState<RollResult | null>(null);
+  
+  // Refs
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const lastGMMessageIdRef = useRef<string | null>(null);
+  const quickActionsRef = useRef<QuickActionsRef>(null);
+
+  // Game Session Hook
+  const {
+    gameState,
+    isLoading,
+    loadError,
+    aiError,
+    setAiError,
+    submitAction,
+    saveGameState,
+    updateLocalState
+  } = useGameSession({
+    gameId: resolvedParams.id,
+    onGMResponse: handleGMResponse,
+    onSceneChange: (description) => {
+      setCurrentSceneDescription(description);
+      setSceneImageUrl(null);
+    }
+  });
+
+  // Audio Narration Hook
   const {
     isMuted,
     toggleMute,
@@ -101,23 +87,69 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     togglePlayback,
   } = useAudioNarration();
 
-  // Load game from Supabase
-  useEffect(() => {
-    async function loadGame() {
-      try {
-        const game = await getGame(gameIdRef.current);
-        if (!game) {
-          setLoadError('Game not found');
-          return;
-        }
-        setGameState(game);
-      } catch (err) {
-        console.error('Failed to load game:', err);
-        setLoadError(err instanceof Error ? err.message : 'Failed to load game');
+  // Save Status Hook
+  const {
+    status: saveStatus,
+    lastSaved,
+    markDirty
+  } = useSaveStatus({
+    onSave: async () => {
+      if (gameState) {
+        await saveGameState(gameState);
       }
+    },
+    debounceMs: 3000
+  });
+
+  // Keyboard Shortcuts Hook
+  const { showHelp, setShowHelp } = useKeyboardShortcuts({
+    onSubmit: () => handleSubmit(input),
+    onEscape: () => {
+      if (settingsOpen) setSettingsOpen(false);
+      else if (breakingPointOpen) setBreakingPointOpen(false);
+      else if (infectionCheckOpen) setInfectionCheckOpen(false);
+      else setInput('');
+    },
+    onQuickAction: (index) => quickActionsRef.current?.triggerAction(index),
+    onToggleAudio: () => {
+      // Toggle current playing audio or replay last GM message
+      if (audioState.isPlaying) {
+        stopAudio();
+      } else if (gameState?.messages.length) {
+        const lastGM = [...gameState.messages].reverse().find(m => m.role === 'gm');
+        if (lastGM) {
+          playAudio(lastGM.content, lastGM.id);
+        }
+      }
+    },
+    onToggleMute: toggleMute,
+    enabled: !deathOpen
+  });
+
+  // Handle GM Response - check for special events
+  function handleGMResponse(response: GMApiResponse) {
+    // Track roll for combat
+    if (response.roll?.result) {
+      setLastRoll(response.roll.result);
     }
-    loadGame();
-  }, []);
+
+    // Check for breaking point
+    if (response.breakingPoint) {
+      setBreakingPointOpen(true);
+    }
+
+    // Check for infection
+    if (response.infectionCheck) {
+      setInfectionContext(response.narrative);
+      setInfectionCheckOpen(true);
+    }
+
+    // Check for death (critical wound when already at critical)
+    if (gameState?.character.wounds.critical && response.stateChanges?.wounds?.type === 'critical') {
+      setDeathCause(response.narrative);
+      setDeathOpen(true);
+    }
+  }
 
   // Load settings from localStorage
   useEffect(() => {
@@ -131,6 +163,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     }
   }, []);
 
+  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [gameState?.messages]);
@@ -141,7 +174,6 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     
     const lastMessage = gameState.messages[gameState.messages.length - 1];
     
-    // Only auto-play GM messages that we haven't played yet
     if (
       lastMessage &&
       lastMessage.role === 'gm' && 
@@ -152,163 +184,19 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     }
   }, [gameState?.messages, isMuted, playAudio]);
 
-  // Save game state to Supabase
-  const saveGameState = useCallback(async (updates: Partial<GameState>) => {
-    try {
-      await updateGame(gameIdRef.current, updates);
-    } catch (err) {
-      console.error('Failed to save game state:', err);
-    }
-  }, []);
-
-  // Handle scene image generation completion
+  // Handle scene image generation
   const handleSceneImageGenerated = useCallback((url: string) => {
     setSceneImageUrl(url);
-    // Cache the scene image URL in game state
     if (gameState) {
       const updatedLocation = {
         ...gameState.location,
         sceneImageUrl: url
       };
-      setGameState(prev => prev ? {
-        ...prev,
-        location: updatedLocation
-      } : null);
+      updateLocalState({ location: updatedLocation });
       saveGameState({ location: updatedLocation });
+      markDirty();
     }
-  }, [gameState, saveGameState]);
-
-  // Apply state changes from GM response
-  const applyStateChanges = useCallback((changes: GMStateChanges, currentState: GameState): Partial<GameState> => {
-    const updates: Partial<GameState> = {};
-
-    if (changes.threat !== null && changes.threat !== undefined) {
-      updates.threat = Math.max(0, Math.min(10, changes.threat));
-    }
-
-    if (changes.threatState) {
-      updates.threatState = changes.threatState;
-    }
-
-    if (changes.stress !== null && changes.stress !== undefined) {
-      updates.character = {
-        ...currentState.character,
-        stress: Math.max(0, Math.min(currentState.character.maxStress, changes.stress))
-      };
-    }
-
-    if (changes.wounds) {
-      const woundType = changes.wounds.type;
-      const change = changes.wounds.change;
-      updates.character = {
-        ...(updates.character || currentState.character),
-        wounds: {
-          ...currentState.character.wounds,
-          [woundType]: woundType === 'critical' 
-            ? change > 0 
-            : Math.max(0, currentState.character.wounds[woundType] + change)
-        }
-      };
-    }
-
-    if (changes.guts !== null && changes.guts !== undefined) {
-      updates.character = {
-        ...(updates.character || currentState.character),
-        guts: Math.max(0, Math.min(5, currentState.character.guts + changes.guts))
-      };
-    }
-
-    if (changes.location) {
-      updates.location = {
-        ...currentState.location,
-        ...changes.location,
-        searched: false,
-        sceneImageUrl: undefined // Clear on location change
-      };
-    }
-
-    if (changes.time) {
-      updates.time = changes.time;
-    }
-
-    if (changes.day !== null && changes.day !== undefined) {
-      updates.day = changes.day;
-    }
-
-    if (changes.inventory) {
-      const currentInventory = [...currentState.character.inventory];
-      
-      // Add items
-      if (changes.inventory.add) {
-        for (const itemName of changes.inventory.add) {
-          const existing = currentInventory.find(i => i.name.toLowerCase() === itemName.toLowerCase());
-          if (existing) {
-            existing.quantity += 1;
-          } else {
-            currentInventory.push({
-              id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              name: itemName,
-              quantity: 1,
-              isSignificant: true
-            });
-          }
-        }
-      }
-      
-      // Remove items
-      if (changes.inventory.remove) {
-        for (const itemName of changes.inventory.remove) {
-          const idx = currentInventory.findIndex(i => i.name.toLowerCase() === itemName.toLowerCase());
-          const item = currentInventory[idx];
-          if (idx !== -1 && item) {
-            item.quantity -= 1;
-            if (item.quantity <= 0) {
-              currentInventory.splice(idx, 1);
-            }
-          }
-        }
-      }
-
-      updates.character = {
-        ...(updates.character || currentState.character),
-        inventory: currentInventory
-      };
-    }
-
-    if (changes.objectives) {
-      const currentObjectives = [...currentState.objectives];
-      
-      // Add objectives
-      if (changes.objectives.add) {
-        for (const objText of changes.objectives.add) {
-          if (!currentObjectives.some(o => o.text.toLowerCase() === objText.toLowerCase())) {
-            currentObjectives.push({
-              id: `obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              text: objText,
-              completed: false
-            });
-          }
-        }
-      }
-      
-      // Complete objectives
-      if (changes.objectives.complete) {
-        for (const objText of changes.objectives.complete) {
-          const obj = currentObjectives.find(o => 
-            o.text.toLowerCase().includes(objText.toLowerCase()) ||
-            objText.toLowerCase().includes(o.text.toLowerCase())
-          );
-          if (obj) {
-            obj.completed = true;
-          }
-        }
-      }
-
-      updates.objectives = currentObjectives;
-    }
-
-    return updates;
-  }, []);
+  }, [gameState, updateLocalState, saveGameState, markDirty]);
 
   // Handle spending guts
   const handleSpendGuts = useCallback((use: GutsUse | string) => {
@@ -316,19 +204,16 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     
     const gutsUse = use as GutsUse;
     
-    // Deduct guts
     const updatedCharacter = {
       ...gameState.character,
       guts: gameState.character.guts - 1
     };
 
-    // Apply the effect based on use type
     let effectMessage = '';
     let additionalPrompt = '';
     
     switch (gutsUse) {
       case 'reroll':
-        setPendingGutsUse('reroll');
         effectMessage = '🎲 **Guts Spent: Reroll!** Your next failed roll can be rerolled.';
         break;
         
@@ -352,12 +237,12 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
         break;
         
       case 'stand':
-        effectMessage = '💀 **Guts Spent: Last Stand!** You push through the pain for one more action.';
+        effectMessage = '💀 **Guts Spent: Last Stand!** You push through the pain.';
         additionalPrompt = '[GUTS ACTIVE: Last Stand] ';
         break;
         
       case 'flashback':
-        effectMessage = '💭 **Guts Spent: Flashback!** Describe a past preparation that helps now.';
+        effectMessage = '💭 **Guts Spent: Flashback!** Describe a past preparation.';
         additionalPrompt = '[GUTS ACTIVE: Flashback] ';
         break;
         
@@ -365,9 +250,9 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
         effectMessage = '🔥 **Guts Spent!**';
     }
 
-    // Pre-fill input with prompt if applicable
     if (additionalPrompt) {
       setInput(additionalPrompt);
+      inputRef.current?.focus();
     }
 
     const gutsMessage: Message = {
@@ -377,154 +262,37 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
       timestamp: new Date()
     };
 
-    setGameState(prev => prev ? {
-      ...prev,
+    updateLocalState({
       character: updatedCharacter,
-      messages: [...prev.messages, gutsMessage]
-    } : null);
-
-    saveGameState({ character: updatedCharacter });
-  }, [gameState, saveGameState]);
-
-  // Call the GM API
-  const callGM = useCallback(async (action: string, rollResult?: RollResult): Promise<GMApiResponse> => {
-    const response = await fetch('/api/gm', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action,
-        gameState,
-        rollResult,
-      }),
+      messages: [...gameState.messages, gutsMessage]
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `API error: ${response.status}`);
-    }
+    saveGameState({ character: updatedCharacter });
+    markDirty();
+  }, [gameState, updateLocalState, saveGameState, markDirty]);
 
-    return response.json();
-  }, [gameState]);
-
-  const handleSubmit = async (action: string) => {
+  // Handle submit action
+  const handleSubmit = useCallback(async (action: string) => {
     if (!action.trim() || !gameState || isLoading) return;
-
-    // Stop any current narration when player takes action
-    stopAudio();
     
+    stopAudio();
     setInput('');
-    setIsLoading(true);
-    setAiError(null);
+    await submitAction(action);
+    markDirty();
+  }, [gameState, isLoading, stopAudio, submitAction, markDirty]);
 
-    // Add player message optimistically
-    const playerMessage: Message = {
-      id: `msg-${Date.now()}`,
-      role: 'player',
-      content: action,
-      timestamp: new Date()
-    };
+  // Handle quick action trigger
+  const handleQuickAction = useCallback((action: string) => {
+    handleSubmit(action);
+  }, [handleSubmit]);
 
-    setGameState(prev => prev ? {
-      ...prev,
-      messages: [...prev.messages, playerMessage]
-    } : null);
-
-    // Save player message to database
-    try {
-      await addMessage(gameIdRef.current, 'player', action);
-    } catch (err) {
-      console.error('Failed to save player message:', err);
-    }
-
-    try {
-      // Call the AI GM
-      const gmResponse = await callGM(action);
-
-      if (gmResponse.error) {
-        throw new Error(gmResponse.error);
-      }
-
-      // Apply state changes
-      const stateUpdates = applyStateChanges(gmResponse.stateChanges, gameState);
-
-      // Handle scene changes for image generation
-      if (gmResponse.sceneChanged && gmResponse.sceneDescription) {
-        setCurrentSceneDescription(gmResponse.sceneDescription);
-        setSceneImageUrl(null); // Clear cached image to trigger regeneration
-      }
-
-      // Track last roll for combat tracker
-      if (gmResponse.roll?.result) {
-        setLastRoll(gmResponse.roll.result);
-      }
-
-      // Create GM message
-      const gmMessage: Message = {
-        id: `msg-${Date.now() + 1}`,
-        role: 'gm',
-        content: gmResponse.narrative,
-        timestamp: new Date(),
-        roll: gmResponse.roll?.result
-      };
-
-      // Calculate new roll count
-      const newRollCount = gmResponse.roll?.result 
-        ? gameState.rollCount + 1 
-        : gameState.rollCount;
-
-      // Update local state
-      setGameState(prev => prev ? {
-        ...prev,
-        ...stateUpdates,
-        messages: [...prev.messages, gmMessage],
-        rollCount: newRollCount,
-        character: stateUpdates.character || prev.character,
-        objectives: stateUpdates.objectives || prev.objectives,
-      } : null);
-
-      // Save to database
-      try {
-        await addMessage(gameIdRef.current, 'gm', gmResponse.narrative, gmResponse.roll?.result);
-        await saveGameState({
-          ...stateUpdates,
-          rollCount: newRollCount
-        });
-      } catch (err) {
-        console.error('Failed to save GM response:', err);
-      }
-
-    } catch (err) {
-      console.error('GM API error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to get GM response';
-      setAiError(errorMessage);
-      
-      // Add error message to chat
-      const errorMsg: Message = {
-        id: `msg-${Date.now() + 1}`,
-        role: 'system',
-        content: `**Error:** ${errorMessage}\n\n*The GM is having trouble responding. Check that your API keys are configured in .env.local*`,
-        timestamp: new Date()
-      };
-
-      setGameState(prev => prev ? {
-        ...prev,
-        messages: [...prev.messages, errorMsg]
-      } : null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Loading state with skeleton
+  // Loading state
   if (!gameState && !loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
         <div className="text-center">
           <div className="text-4xl mb-4 animate-pulse" aria-hidden="true">🏚️</div>
           <div className="text-muted">Loading game...</div>
-          {/* Skeleton preview */}
           <div className="mt-8 w-80 space-y-3">
             <div className="h-4 bg-surface-elevated rounded animate-pulse" />
             <div className="h-4 bg-surface-elevated rounded animate-pulse w-3/4" />
@@ -551,9 +319,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     );
   }
 
-  if (!gameState) {
-    return null;
-  }
+  if (!gameState) return null;
 
   return (
     <GameErrorBoundary>
@@ -568,9 +334,12 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
           >
             ← Dashboard
           </Link>
-          <h1 className="font-semibold">
-            {gameState.title} — Day {gameState.day}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-semibold">
+              {gameState.title} — Day {gameState.day}
+            </h1>
+            <SaveIndicator status={saveStatus} lastSaved={lastSaved} />
+          </div>
           <div className="flex items-center gap-3">
             <MuteToggle isMuted={isMuted} onToggle={toggleMute} />
             <button 
@@ -578,13 +347,14 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
               className="text-secondary hover:text-primary transition-colors text-sm"
               aria-label="Open game settings"
             >
-              ⚙ Settings
+              ⚙️
             </button>
             <button 
+              onClick={() => setShowHelp(true)}
               className="text-secondary hover:text-primary transition-colors text-sm"
-              aria-label="View game rules"
+              aria-label="Keyboard shortcuts"
             >
-              📖 Rules
+              ⌨️
             </button>
           </div>
         </div>
@@ -601,13 +371,21 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
           aria-live="assertive"
         >
           <span>⚠️ GM Error: {aiError}</span>
-          <button 
-            onClick={() => setAiError(null)}
-            className="text-red-200 hover:text-white"
-            aria-label="Dismiss error message"
-          >
-            ✕
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => handleSubmit(input || 'retry')}
+              className="text-red-200 hover:text-white underline"
+            >
+              Retry
+            </button>
+            <button 
+              onClick={() => setAiError(null)}
+              className="text-red-200 hover:text-white"
+              aria-label="Dismiss error message"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -621,7 +399,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
         {/* Center Panel - Narrative */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Scene Image */}
-          {gameState.location && (
+          {gameState.location && settings.autoGenerateImages && (
             <div className="p-4 pb-0">
               <SceneImage
                 sceneDescription={currentSceneDescription}
@@ -699,6 +477,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(input); }}>
               <div className="flex gap-2 mb-3">
                 <input
+                  ref={inputRef}
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -717,7 +496,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
               </div>
             </form>
 
-            {/* Combat Tracker (shows when in combat/encounter) */}
+            {/* Combat Tracker */}
             {(gameState.threatState === 'encounter' || gameState.threatState === 'swarm') && (
               <div className="mb-3">
                 <CombatTracker
@@ -729,21 +508,21 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
               </div>
             )}
 
-            {/* Context-Aware Quick Actions */}
+            {/* Quick Actions */}
             <div className="hidden md:block" role="group" aria-label="Quick actions">
               <QuickActions
+                ref={quickActionsRef}
                 gameState={gameState}
-                onAction={handleSubmit}
+                onAction={handleQuickAction}
                 disabled={isLoading}
                 maxActions={6}
               />
             </div>
             
-            {/* Mobile Quick Actions (compact) */}
             <div className="md:hidden" role="group" aria-label="Quick actions">
               <QuickActions
                 gameState={gameState}
-                onAction={handleSubmit}
+                onAction={handleQuickAction}
                 disabled={isLoading}
                 maxActions={4}
               />
@@ -805,16 +584,56 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
         threat={gameState.threat}
       />
       
-      {/* Settings Panel */}
+      {/* Modals */}
       <SettingsPanel
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         settings={settings}
         onSave={(newSettings) => {
           setSettings(newSettings);
-          // Could persist to localStorage or database here
           localStorage.setItem('infected-settings', JSON.stringify(newSettings));
         }}
+      />
+
+      <KeyboardHelpOverlay
+        isOpen={showHelp}
+        onClose={() => setShowHelp(false)}
+      />
+
+      <BreakingPointModal
+        isOpen={breakingPointOpen}
+        onClose={() => setBreakingPointOpen(false)}
+        stressLevel={gameState.character.stress}
+        maxStress={gameState.character.maxStress}
+        rollResult={pendingRollResult}
+        onSpendGuts={() => handleSpendGuts('reroll')}
+        canSpendGuts={gameState.character.guts > 0}
+      />
+
+      <InfectionCheckModal
+        isOpen={infectionCheckOpen}
+        onClose={() => setInfectionCheckOpen(false)}
+        context={infectionContext}
+        rollResult={pendingRollResult}
+        onSpendGuts={() => handleSpendGuts('reroll')}
+        canSpendGuts={gameState.character.guts > 0}
+      />
+
+      <DeathSceneModal
+        isOpen={deathOpen}
+        character={gameState.character}
+        deathCause={deathCause}
+        stats={{
+          daysSurvived: gameState.day,
+          killCount: gameState.killCount,
+          rollCount: gameState.rollCount,
+          gutsSpent: 5 - gameState.character.guts // Approximate
+        }}
+        onViewStory={() => {
+          // TODO: Navigate to story summary
+          router.push('/');
+        }}
+        onReturn={() => router.push('/')}
       />
     </div>
     </GameErrorBoundary>

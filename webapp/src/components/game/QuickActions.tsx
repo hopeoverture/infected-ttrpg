@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, forwardRef, useImperativeHandle } from 'react';
 import { GameState } from '@/lib/types';
 
 interface QuickAction {
@@ -223,12 +223,16 @@ interface QuickActionsProps {
   maxActions?: number;
 }
 
-export default function QuickActions({ 
+export interface QuickActionsRef {
+  triggerAction: (index: number) => void;
+}
+
+const QuickActions = forwardRef<QuickActionsRef, QuickActionsProps>(function QuickActions({ 
   gameState, 
   onAction, 
   disabled = false,
   maxActions = 6 
-}: QuickActionsProps) {
+}, ref) {
   // Filter and sort actions based on current game state
   const availableActions = useMemo(() => {
     return ALL_QUICK_ACTIONS
@@ -236,6 +240,16 @@ export default function QuickActions({
       .sort((a, b) => b.priority - a.priority)
       .slice(0, maxActions);
   }, [gameState, maxActions]);
+
+  // Expose triggerAction method for keyboard shortcuts
+  useImperativeHandle(ref, () => ({
+    triggerAction: (index: number) => {
+      const action = availableActions[index];
+      if (action && !disabled) {
+        onAction(action.action);
+      }
+    }
+  }), [availableActions, disabled, onAction]);
 
   // Get contextual header based on situation
   const contextHeader = useMemo(() => {
@@ -280,7 +294,9 @@ export default function QuickActions({
       </div>
     </div>
   );
-}
+});
+
+export default QuickActions;
 
 // Compact version for mobile
 export function QuickActionsCompact({ 
