@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { GameSummary, BACKGROUNDS } from '@/lib/types';
+import { useRouter } from 'next/navigation';
+import { GameSummary, BACKGROUNDS, Background } from '@/lib/types';
+import { createClient } from '@/lib/supabase/client';
+import { getGames } from '@/lib/supabase/games';
 
-// Mock data for development - replace with actual storage later
+// Mock data for when Supabase isn't configured
 const mockGames: GameSummary[] = [
   {
-    id: '1',
+    id: 'demo-1',
     title: 'The Long Road',
     characterName: 'Marcus Chen',
     background: 'soldier',
@@ -17,7 +20,7 @@ const mockGames: GameSummary[] = [
     isGameOver: false
   },
   {
-    id: '2',
+    id: 'demo-2',
     title: 'Hospital Run',
     characterName: 'Sarah Webb',
     background: 'medic',
@@ -25,17 +28,6 @@ const mockGames: GameSummary[] = [
     threat: 3,
     updatedAt: new Date(),
     isGameOver: false
-  },
-  {
-    id: '3',
-    title: 'First Light',
-    characterName: 'Jake Morrison',
-    background: 'hunter',
-    day: 7,
-    threat: 10,
-    updatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    isGameOver: true,
-    deathDay: 7
   }
 ];
 
@@ -147,20 +139,57 @@ function getTimeAgo(date: Date): string {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
   const [games, setGames] = useState<GameSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<{ email?: string } | null>(null);
+  const [isConfigured, setIsConfigured] = useState(true);
 
   useEffect(() => {
-    // TODO: Load from actual storage
-    setGames(mockGames);
-    setLoading(false);
+    async function loadData() {
+      // Check if Supabase is configured
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (!supabaseUrl || supabaseUrl.includes('your-project')) {
+        // Not configured, use mock data
+        setIsConfigured(false);
+        setGames(mockGames);
+        setLoading(false);
+        return;
+      }
+
+      const supabase = createClient();
+      
+      // Get user
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+
+      if (user) {
+        try {
+          const games = await getGames();
+          setGames(games);
+        } catch (error) {
+          console.error('Error loading games:', error);
+          setGames([]);
+        }
+      }
+      
+      setLoading(false);
+    }
+
+    loadData();
   }, []);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.refresh();
+  };
 
   const activeGames = games.filter(g => !g.isGameOver);
   const completedGames = games.filter(g => g.isGameOver);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="border-b border-subtle">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -169,15 +198,32 @@ export default function Dashboard() {
             <h1 className="text-xl font-bold tracking-wider">INFECTED</h1>
           </div>
           <div className="flex items-center gap-4">
-            <button className="text-secondary hover:text-primary transition-colors">
-              Settings
-            </button>
+            {!isConfigured && (
+              <span className="text-xs text-warning bg-warning/20 px-2 py-1 rounded">
+                Demo Mode
+              </span>
+            )}
+            {user ? (
+              <>
+                <span className="text-sm text-secondary">{user.email}</span>
+                <button 
+                  onClick={handleLogout}
+                  className="text-secondary hover:text-primary transition-colors"
+                >
+                  Logout
+                </button>
+              </>
+            ) : isConfigured ? (
+              <Link href="/login" className="text-secondary hover:text-primary transition-colors">
+                Sign In
+              </Link>
+            ) : null}
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="flex-1 max-w-7xl mx-auto px-6 py-8 w-full">
         {/* Title Row */}
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-2xl font-semibold">Your Games</h2>
@@ -242,6 +288,11 @@ export default function Dashboard() {
       <footer className="border-t border-subtle mt-auto">
         <div className="max-w-7xl mx-auto px-6 py-4 text-center text-muted text-sm">
           INFECTED v1.1.0 — A survival horror TTRPG
+          {!isConfigured && (
+            <span className="ml-2">
+              · <a href="https://github.com/hopeoverture/infected-ttrpg" className="text-gold hover:underline">GitHub</a>
+            </span>
+          )}
         </div>
       </footer>
     </div>
