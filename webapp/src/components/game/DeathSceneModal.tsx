@@ -29,9 +29,10 @@ export default function DeathSceneModal({
 }: DeathSceneModalProps) {
   const [phase, setPhase] = useState<'fadeIn' | 'name' | 'cause' | 'stats' | 'actions'>('fadeIn');
 
+  // Reset state when modal opens - intentional pattern for modal initialization
   useEffect(() => {
     if (isOpen) {
-      setPhase('fadeIn');
+      setPhase('fadeIn'); // eslint-disable-line react-hooks/set-state-in-effect
       // Cinematic sequence
       const timers = [
         setTimeout(() => setPhase('name'), 1500),

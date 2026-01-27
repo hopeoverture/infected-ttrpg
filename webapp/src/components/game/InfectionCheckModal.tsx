@@ -23,10 +23,11 @@ export default function InfectionCheckModal({
   const [phase, setPhase] = useState<'intro' | 'rolling' | 'result'>('intro');
   const [showResult, setShowResult] = useState(false);
 
+  // Reset state when modal opens - intentional pattern for modal initialization
   useEffect(() => {
     if (isOpen) {
-      setPhase('intro');
-      setShowResult(false);
+      setPhase('intro'); // eslint-disable-line react-hooks/set-state-in-effect
+      setShowResult(false);  
     }
   }, [isOpen]);
 

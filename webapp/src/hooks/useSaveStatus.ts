@@ -23,14 +23,12 @@ export function useSaveStatus({
   const [isOnline, setIsOnline] = useState(true);
   const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const isDirtyRef = useRef(false);
+  const performSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Track online status
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      if (status === 'offline') {
-        setStatus('saved');
-      }
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -40,17 +38,19 @@ export function useSaveStatus({
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    // Check initial status
-    setIsOnline(navigator.onLine);
-    if (!navigator.onLine) {
-      setStatus('offline');
+    // Check initial status - intentional initialization from browser API
+    if (typeof navigator !== 'undefined') {
+      setIsOnline(navigator.onLine); // eslint-disable-line react-hooks/set-state-in-effect
+      if (!navigator.onLine) {
+        setStatus('offline');  
+      }
     }
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [status]);
+  }, []);
 
   const performSave = useCallback(async () => {
     if (!isOnline) {
@@ -67,17 +67,21 @@ export function useSaveStatus({
     } catch (error) {
       console.error('Save failed:', error);
       setStatus('error');
-      // Retry after 5 seconds
+      // Retry after 5 seconds using ref to avoid closure issues
       setTimeout(() => {
-        if (isDirtyRef.current) {
-          performSave();
+        if (isDirtyRef.current && performSaveRef.current) {
+          performSaveRef.current();
         }
       }, 5000);
     }
   }, [onSave, isOnline]);
 
+  // Keep ref updated
+  useEffect(() => {
+    performSaveRef.current = performSave;
+  }, [performSave]);
+
   const save = useCallback(() => {
-    // Clear any pending debounced save
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
@@ -87,18 +91,16 @@ export function useSaveStatus({
   const markDirty = useCallback(() => {
     isDirtyRef.current = true;
     
-    // Clear existing debounce
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
 
-    // Debounce the save
     debounceRef.current = setTimeout(() => {
-      if (isDirtyRef.current) {
-        performSave();
+      if (isDirtyRef.current && performSaveRef.current) {
+        performSaveRef.current();
       }
     }, debounceMs);
-  }, [debounceMs, performSave]);
+  }, [debounceMs]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -112,16 +114,14 @@ export function useSaveStatus({
   // Save on page unload if dirty
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (isDirtyRef.current) {
-        // Try to save synchronously (best effort)
-        // Note: async operations may not complete
-        performSave();
+      if (isDirtyRef.current && performSaveRef.current) {
+        performSaveRef.current();
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [performSave]);
+  }, []);
 
   return {
     status,

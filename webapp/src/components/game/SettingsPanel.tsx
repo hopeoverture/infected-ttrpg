@@ -53,10 +53,11 @@ export default function SettingsPanel({
   const [localSettings, setLocalSettings] = useState<GameSettings>(settings);
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Reset local state when modal opens - intentional pattern for modal initialization
   useEffect(() => {
     if (isOpen) {
-      setLocalSettings(settings);
-      setHasChanges(false);
+      setLocalSettings(settings); // eslint-disable-line react-hooks/set-state-in-effect
+      setHasChanges(false);  
     }
   }, [isOpen, settings]);
 

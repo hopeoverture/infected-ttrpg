@@ -35,13 +35,14 @@ export default function BreakingPointModal({
   const [showResult, setShowResult] = useState(false);
   const [consequence, setConsequence] = useState('');
 
+  // Reset state when modal opens - intentional pattern for modal initialization
   useEffect(() => {
     if (isOpen) {
-      setPhase('intro');
-      setShowResult(false);
+      setPhase('intro'); // eslint-disable-line react-hooks/set-state-in-effect
+      setShowResult(false);  
       // Random consequence for if they fail
       const randomIndex = Math.floor(Math.random() * SNAP_CONSEQUENCES.length);
-      setConsequence(SNAP_CONSEQUENCES[randomIndex] ?? SNAP_CONSEQUENCES[0]!);
+      setConsequence(SNAP_CONSEQUENCES[randomIndex] ?? SNAP_CONSEQUENCES[0]!);  
     }
   }, [isOpen]);
 

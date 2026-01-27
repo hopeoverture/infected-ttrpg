@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   rollD6,
   isHit,
@@ -124,9 +124,9 @@ describe('Dice Engine', () => {
 
     it('generates appropriate descriptions', () => {
       // Mock for 0 hits (failure)
-      let originalRandom = Math.random;
+      const originalRandom = Math.random;
       Math.random = vi.fn(() => 0.3); // Roll 2s and 3s
-      let result = rollDicePool(2);
+      const result = rollDicePool(2);
       expect(result.description).toMatch(/Failure|CRITICAL/);
       
       Math.random = originalRandom;

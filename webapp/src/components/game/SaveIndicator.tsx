@@ -13,10 +13,10 @@ interface SaveIndicatorProps {
 export default function SaveIndicator({ status, lastSaved, className = '' }: SaveIndicatorProps) {
   const [showSaved, setShowSaved] = useState(false);
 
-  // Show "Saved" briefly then fade
+  // Show "Saved" briefly then fade - intentional UI feedback pattern
   useEffect(() => {
     if (status === 'saved') {
-      setShowSaved(true);
+      setShowSaved(true); // eslint-disable-line react-hooks/set-state-in-effect
       const timer = setTimeout(() => setShowSaved(false), 2000);
       return () => clearTimeout(timer);
     }

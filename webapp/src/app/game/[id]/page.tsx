@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, use, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { GameState, Message, RollResult } from '@/lib/types';
+import { Message, RollResult } from '@/lib/types';
 
 // Components
 import CharacterPanel from '@/components/game/CharacterPanel';
@@ -39,7 +39,15 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   const [input, setInput] = useState('');
   const [mobileTab, setMobileTab] = useState<MobileTab>('story');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<GameSettings>(() => {
+    if (typeof window === 'undefined') return DEFAULT_SETTINGS;
+    try {
+      const saved = localStorage.getItem('infected-settings');
+      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  });
   const [currentSceneDescription, setCurrentSceneDescription] = useState<string | null>(null);
   const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null);
   const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
@@ -50,7 +58,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   const [infectionContext, setInfectionContext] = useState('');
   const [deathOpen, setDeathOpen] = useState(false);
   const [deathCause, setDeathCause] = useState('');
-  const [pendingRollResult, setPendingRollResult] = useState<RollResult | null>(null);
+  const [pendingRollResult] = useState<RollResult | null>(null);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -150,18 +158,6 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
       setDeathOpen(true);
     }
   }
-
-  // Load settings from localStorage
-  useEffect(() => {
-    const savedSettings = localStorage.getItem('infected-settings');
-    if (savedSettings) {
-      try {
-        setSettings(JSON.parse(savedSettings));
-      } catch {
-        // Invalid JSON, use defaults
-      }
-    }
-  }, []);
 
   // Scroll to bottom on new messages
   useEffect(() => {
