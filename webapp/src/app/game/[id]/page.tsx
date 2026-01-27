@@ -28,8 +28,12 @@ import { useAudioNarration } from '@/hooks/useAudioNarration';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
 
+// Game engine
+import { rollBreakingPoint, rollInfectionCheck } from '@/lib/game-engine/dice';
+
 // Types
 type GutsUse = 'reroll' | 'damage' | 'find' | 'enough' | 'stand' | 'flashback';
+type ModalRollType = 'breaking' | 'infection' | null;
 
 export default function GameSession({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -58,7 +62,12 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   const [infectionContext, setInfectionContext] = useState('');
   const [deathOpen, setDeathOpen] = useState(false);
   const [deathCause, setDeathCause] = useState('');
-  const [pendingRollResult] = useState<RollResult | null>(null);
+  
+  // Modal dice rolling state
+  const [modalRollResult, setModalRollResult] = useState<RollResult | null>(null);
+  const [modalRollType, setModalRollType] = useState<ModalRollType>(null);
+  const [infectionOutcome, setInfectionOutcome] = useState<{ outcome: string; symptomsIn: number; turnedIn?: number } | null>(null);
+  const [breakingOutcome, setBreakingOutcome] = useState<{ outcome: string; stressCleared: number } | null>(null);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -143,11 +152,17 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
 
     // Check for breaking point
     if (response.breakingPoint) {
+      setModalRollResult(null);
+      setModalRollType('breaking');
+      setBreakingOutcome(null);
       setBreakingPointOpen(true);
     }
 
     // Check for infection
     if (response.infectionCheck) {
+      setModalRollResult(null);
+      setModalRollType('infection');
+      setInfectionOutcome(null);
       setInfectionContext(response.narrative);
       setInfectionCheckOpen(true);
     }
@@ -158,6 +173,122 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
       setDeathOpen(true);
     }
   }
+
+  // Handle modal dice rolling
+  const handleModalRoll = useCallback(() => {
+    if (!gameState) return;
+
+    if (modalRollType === 'breaking') {
+      const result = rollBreakingPoint(
+        gameState.character.attributes.nerve,
+        gameState.character.skills.resolve
+      );
+      setModalRollResult(result.result);
+      setBreakingOutcome({
+        outcome: result.outcome,
+        stressCleared: result.stressCleared
+      });
+
+      // Apply stress reduction after a delay for UI
+      setTimeout(() => {
+        const stressReduction = result.stressCleared === Infinity 
+          ? gameState.character.stress 
+          : result.stressCleared;
+        const newStress = Math.max(0, gameState.character.stress - stressReduction);
+        
+        updateLocalState({
+          character: {
+            ...gameState.character,
+            stress: newStress
+          }
+        });
+        saveGameState({
+          character: {
+            ...gameState.character,
+            stress: newStress
+          }
+        });
+        markDirty();
+      }, 2000);
+    } else if (modalRollType === 'infection') {
+      const result = rollInfectionCheck(
+        gameState.character.attributes.grit,
+        gameState.character.skills.endure
+      );
+      setModalRollResult(result.result);
+      setInfectionOutcome({
+        outcome: result.outcome,
+        symptomsIn: result.symptomsIn,
+        turnedIn: result.turnedIn
+      });
+
+      // If infected, add a system message and potentially trigger death
+      if (result.outcome === 'infected') {
+        setTimeout(() => {
+          const infectionMsg: Message = {
+            id: `msg-${Date.now()}`,
+            role: 'system',
+            content: `☣️ **INFECTED** — You can feel it spreading through your veins. Symptoms in ${result.symptomsIn} minutes. Turning in ${result.turnedIn} minutes. Find antibiotics or say goodbye.`,
+            timestamp: new Date()
+          };
+          updateLocalState({
+            messages: [...gameState.messages, infectionMsg]
+          });
+        }, 2500);
+      } else if (result.outcome === 'fighting') {
+        setTimeout(() => {
+          const fightingMsg: Message = {
+            id: `msg-${Date.now()}`,
+            role: 'system',
+            content: `⚠️ **FIGHTING IT** — Your body is fighting the infection. Symptoms will appear in ${result.symptomsIn} minutes. Antibiotics can still save you.`,
+            timestamp: new Date()
+          };
+          updateLocalState({
+            messages: [...gameState.messages, fightingMsg]
+          });
+        }, 2500);
+      }
+    }
+  }, [gameState, modalRollType, updateLocalState, saveGameState, markDirty]);
+
+  // Handle modal guts reroll
+  const handleModalGutsReroll = useCallback(() => {
+    if (!gameState || gameState.character.guts < 1) return;
+
+    // Spend guts
+    const updatedCharacter = {
+      ...gameState.character,
+      guts: gameState.character.guts - 1
+    };
+    updateLocalState({ character: updatedCharacter });
+    saveGameState({ character: updatedCharacter });
+    markDirty();
+
+    // Clear current result and re-roll
+    setModalRollResult(null);
+    setBreakingOutcome(null);
+    setInfectionOutcome(null);
+    
+    // Small delay then roll again
+    setTimeout(() => {
+      handleModalRoll();
+    }, 500);
+  }, [gameState, updateLocalState, saveGameState, markDirty, handleModalRoll]);
+
+  // Handle closing modals
+  const handleBreakingPointClose = useCallback(() => {
+    setBreakingPointOpen(false);
+    setModalRollResult(null);
+    setModalRollType(null);
+    setBreakingOutcome(null);
+  }, []);
+
+  const handleInfectionCheckClose = useCallback(() => {
+    setInfectionCheckOpen(false);
+    setModalRollResult(null);
+    setModalRollType(null);
+    setInfectionOutcome(null);
+  }, []);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -598,21 +729,25 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
 
       <BreakingPointModal
         isOpen={breakingPointOpen}
-        onClose={() => setBreakingPointOpen(false)}
+        onClose={handleBreakingPointClose}
         stressLevel={gameState.character.stress}
         maxStress={gameState.character.maxStress}
-        rollResult={pendingRollResult}
-        onSpendGuts={() => handleSpendGuts('reroll')}
+        rollResult={modalRollResult}
+        onRollDice={handleModalRoll}
+        onSpendGuts={handleModalGutsReroll}
         canSpendGuts={gameState.character.guts > 0}
+        outcome={breakingOutcome}
       />
 
       <InfectionCheckModal
         isOpen={infectionCheckOpen}
-        onClose={() => setInfectionCheckOpen(false)}
+        onClose={handleInfectionCheckClose}
         context={infectionContext}
-        rollResult={pendingRollResult}
-        onSpendGuts={() => handleSpendGuts('reroll')}
+        rollResult={modalRollResult}
+        onRollDice={handleModalRoll}
+        onSpendGuts={handleModalGutsReroll}
         canSpendGuts={gameState.character.guts > 0}
+        outcome={infectionOutcome}
       />
 
       <DeathSceneModal
@@ -623,11 +758,10 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
           daysSurvived: gameState.day,
           killCount: gameState.killCount,
           rollCount: gameState.rollCount,
-          gutsSpent: 5 - gameState.character.guts // Approximate
+          gutsSpent: 5 - gameState.character.guts + gameState.character.gutsEarnedThisSession
         }}
         onViewStory={() => {
-          // TODO: Navigate to story summary
-          router.push('/');
+          router.push(`/game/${resolvedParams.id}/summary`);
         }}
         onReturn={() => router.push('/')}
       />

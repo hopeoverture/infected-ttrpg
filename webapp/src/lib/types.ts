@@ -355,6 +355,7 @@ export interface GMStateChanges {
   wounds?: { type: 'bruised' | 'bleeding' | 'broken' | 'critical'; change: number } | null;
   guts?: number | null;
   gutsEarned?: number | null;
+  kills?: number | null;  // Number of infected killed this action
   location?: {
     name: string;
     description: string;

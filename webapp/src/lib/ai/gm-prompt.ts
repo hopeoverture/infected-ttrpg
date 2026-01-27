@@ -368,6 +368,7 @@ You MUST respond with valid JSON in this exact format:
 - stress: number 0-6
 - wounds: { "type": "bruised" | "bleeding" | "broken" | "critical", "change": number } 
 - guts: number change (positive or negative)
+- kills: number of infected killed this action (for tracking stats)
 - location: { name, description, lightLevel, scarcity, ambientThreat }
 - inventory: { "add": [], "remove": [] }
 - objectives: { "add": [], "complete": [] }

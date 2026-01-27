@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect } from 'react';
 import { RollResult } from '@/lib/types';
 
@@ -9,8 +10,10 @@ interface BreakingPointModalProps {
   stressLevel: number;
   maxStress: number;
   rollResult?: RollResult | null;
+  onRollDice?: () => void;
   onSpendGuts?: () => void;
   canSpendGuts?: boolean;
+  outcome?: { outcome: string; stressCleared: number } | null;
 }
 
 const SNAP_CONSEQUENCES = [
@@ -28,8 +31,10 @@ export default function BreakingPointModal({
   stressLevel,
   maxStress,
   rollResult,
+  onRollDice,
   onSpendGuts,
-  canSpendGuts = false
+  canSpendGuts = false,
+  outcome
 }: BreakingPointModalProps) {
   const [phase, setPhase] = useState<'intro' | 'rolling' | 'result'>('intro');
   const [showResult, setShowResult] = useState(false);
@@ -38,14 +43,16 @@ export default function BreakingPointModal({
   // Reset state when modal opens - intentional pattern for modal initialization
   useEffect(() => {
     if (isOpen) {
-      setPhase('intro'); // eslint-disable-line react-hooks/set-state-in-effect
-      setShowResult(false);  
+      setPhase('intro');
+      setShowResult(false);
       // Random consequence for if they fail
       const randomIndex = Math.floor(Math.random() * SNAP_CONSEQUENCES.length);
-      setConsequence(SNAP_CONSEQUENCES[randomIndex] ?? SNAP_CONSEQUENCES[0]!);  
+      setConsequence(SNAP_CONSEQUENCES[randomIndex] ?? SNAP_CONSEQUENCES[0]!);
     }
+     
   }, [isOpen]);
 
+  // Handle roll result coming in
   useEffect(() => {
     if (rollResult && phase === 'rolling') {
       const timer = setTimeout(() => {
@@ -56,9 +63,19 @@ export default function BreakingPointModal({
     }
   }, [rollResult, phase]);
 
+  // Handle clicking roll dice
+  const handleRollClick = () => {
+    setPhase('rolling');
+    // Small delay before triggering roll for UX
+    setTimeout(() => {
+      onRollDice?.();
+    }, 300);
+  };
+
   if (!isOpen) return null;
 
-  const snapped = rollResult && rollResult.totalHits === 0;
+  const snapped = outcome?.outcome === 'breakdown';
+  const panicked = outcome?.outcome === 'panic';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -109,7 +126,7 @@ export default function BreakingPointModal({
                 Hold yourself together or suffer a breakdown
               </p>
               <button
-                onClick={() => setPhase('rolling')}
+                onClick={handleRollClick}
                 className="btn btn-primary text-lg px-8 py-3"
               >
                 🎲 ROLL DICE
@@ -139,7 +156,7 @@ export default function BreakingPointModal({
           {phase === 'result' && rollResult && (
             <div className="animate-fade-in">
               {/* Dice display */}
-              <div className="flex justify-center gap-2 mb-6">
+              <div className="flex justify-center gap-2 mb-6 flex-wrap">
                 {rollResult.dice.map((die, i) => (
                   <div
                     key={i}
@@ -152,36 +169,50 @@ export default function BreakingPointModal({
                     {die.value}
                   </div>
                 ))}
+                {rollResult.bonusDice.map((die, i) => (
+                  <div
+                    key={`bonus-${i}`}
+                    className={`die ${die.isHit ? 'die-hit' : ''} die-explode`}
+                  >
+                    {die.value}
+                  </div>
+                ))}
+              </div>
+              
+              <div className="text-sm text-muted mb-4">
+                {rollResult.totalHits} hits — {rollResult.description}
               </div>
 
               {/* Result text */}
-              {showResult && (
-                <div className={`animate-fade-in ${snapped ? 'text-danger' : 'text-success'}`}>
-                  <div className={`text-3xl font-bold mb-4 ${snapped ? 'glow-danger' : 'glow-success'}`}>
-                    {snapped ? '😱 SNAP!' : '😤 HOLD IT TOGETHER'}
+              {showResult && outcome && (
+                <div className={`animate-fade-in ${snapped ? 'text-danger' : panicked ? 'text-warning' : 'text-success'}`}>
+                  <div className={`text-3xl font-bold mb-4 ${snapped ? 'glow-danger' : panicked ? 'glow-warning' : 'glow-success'}`}>
+                    {snapped ? '😱 BREAKDOWN!' : panicked ? '😰 PANIC!' : '😤 HOLD IT TOGETHER'}
                   </div>
                   
                   {snapped ? (
                     <div className="bg-danger/20 border border-danger rounded-lg p-4 mb-6">
                       <p className="text-sm text-danger font-medium mb-2">Breakdown Effect:</p>
                       <p className="text-secondary">{consequence}</p>
+                      <p className="text-xs text-muted mt-2">All stress cleared. You gain a lasting trauma.</p>
+                    </div>
+                  ) : panicked ? (
+                    <div className="bg-warning/20 border border-warning rounded-lg p-4 mb-6">
+                      <p className="text-secondary">You panic momentarily, acting irrationally for one round.</p>
+                      <p className="text-xs text-muted mt-2">2 stress cleared.</p>
                     </div>
                   ) : (
-                    <p className="text-lg mb-6">
-                      You steel yourself. The nightmare continues, but you&apos;re still in control.
-                    </p>
-                  )}
-
-                  {/* Clear stress on success */}
-                  {!snapped && (
-                    <p className="text-sm text-info mb-4">
-                      Stress reduced by half (round down)
-                    </p>
+                    <div className="mb-6">
+                      <p className="text-lg mb-2">
+                        You steel yourself. The nightmare continues, but you&apos;re still in control.
+                      </p>
+                      <p className="text-sm text-info">1 stress cleared.</p>
+                    </div>
                   )}
 
                   {/* Actions */}
                   <div className="flex justify-center gap-4">
-                    {snapped && canSpendGuts && onSpendGuts && (
+                    {(snapped || panicked) && canSpendGuts && onSpendGuts && (
                       <button
                         onClick={onSpendGuts}
                         className="btn btn-primary"

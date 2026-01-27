@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect } from 'react';
 import { RollResult } from '@/lib/types';
 
@@ -8,8 +9,10 @@ interface InfectionCheckModalProps {
   onClose: () => void;
   context: string;
   rollResult?: RollResult | null;
+  onRollDice?: () => void;
   onSpendGuts?: () => void;
   canSpendGuts?: boolean;
+  outcome?: { outcome: string; symptomsIn: number; turnedIn?: number } | null;
 }
 
 export default function InfectionCheckModal({
@@ -17,8 +20,10 @@ export default function InfectionCheckModal({
   onClose,
   context,
   rollResult,
+  onRollDice,
   onSpendGuts,
-  canSpendGuts = false
+  canSpendGuts = false,
+  outcome
 }: InfectionCheckModalProps) {
   const [phase, setPhase] = useState<'intro' | 'rolling' | 'result'>('intro');
   const [showResult, setShowResult] = useState(false);
@@ -26,11 +31,12 @@ export default function InfectionCheckModal({
   // Reset state when modal opens - intentional pattern for modal initialization
   useEffect(() => {
     if (isOpen) {
-      setPhase('intro'); // eslint-disable-line react-hooks/set-state-in-effect
-      setShowResult(false);  
+      setPhase('intro');
+      setShowResult(false);
     }
   }, [isOpen]);
 
+  // Handle roll result coming in
   useEffect(() => {
     if (rollResult && phase === 'rolling') {
       // Delay result reveal for drama
@@ -42,10 +48,20 @@ export default function InfectionCheckModal({
     }
   }, [rollResult, phase]);
 
+  // Handle clicking roll dice
+  const handleRollClick = () => {
+    setPhase('rolling');
+    // Small delay before triggering roll for UX
+    setTimeout(() => {
+      onRollDice?.();
+    }, 300);
+  };
+
   if (!isOpen) return null;
 
-  const isInfected = rollResult && rollResult.totalHits === 0;
-  const isCriticalFail = rollResult?.isCriticalFailure;
+  const isInfected = outcome?.outcome === 'infected';
+  const isFighting = outcome?.outcome === 'fighting';
+  const isClear = outcome?.outcome === 'clear';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -81,10 +97,10 @@ export default function InfectionCheckModal({
                 Roll <span className="text-gold font-bold">GRIT + Endure</span>
               </p>
               <p className="text-sm text-muted mb-6">
-                You need at least 1 hit to fight off the infection
+                You need at least 2 hits to fight off the infection completely
               </p>
               <button
-                onClick={() => setPhase('rolling')}
+                onClick={handleRollClick}
                 className="btn btn-primary text-lg px-8 py-3 glow-gold"
               >
                 🎲 ROLL DICE
@@ -106,7 +122,7 @@ export default function InfectionCheckModal({
                   </div>
                 ))}
               </div>
-              <p className="text-muted animate-pulse">Rolling...</p>
+              <p className="text-muted animate-pulse">Your body fights the virus...</p>
             </div>
           )}
 
@@ -114,7 +130,7 @@ export default function InfectionCheckModal({
           {phase === 'result' && rollResult && (
             <div className="animate-fade-in">
               {/* Dice display */}
-              <div className="flex justify-center gap-2 mb-6">
+              <div className="flex justify-center gap-2 mb-6 flex-wrap">
                 {rollResult.dice.map((die, i) => (
                   <div
                     key={i}
@@ -127,25 +143,69 @@ export default function InfectionCheckModal({
                     {die.value}
                   </div>
                 ))}
+                {rollResult.bonusDice.map((die, i) => (
+                  <div
+                    key={`bonus-${i}`}
+                    className={`die ${die.isHit ? 'die-hit' : ''} die-explode`}
+                  >
+                    {die.value}
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-sm text-muted mb-4">
+                {rollResult.totalHits} hits — {rollResult.description}
               </div>
 
               {/* Result text */}
-              {showResult && (
-                <div className={`animate-fade-in ${isInfected ? 'text-danger' : 'text-success'}`}>
-                  <div className={`text-4xl font-bold mb-4 ${isInfected ? 'glow-danger' : 'glow-success'}`}>
-                    {isCriticalFail ? '💀 CRITICAL FAILURE' : 
-                     isInfected ? '☣️ INFECTED' : '✓ CLEAN'}
+              {showResult && outcome && (
+                <div className={`animate-fade-in ${isInfected ? 'text-danger' : isFighting ? 'text-warning' : 'text-success'}`}>
+                  <div className={`text-4xl font-bold mb-4 ${
+                    isInfected ? 'glow-danger' : isFighting ? 'glow-warning' : 'glow-success'
+                  }`}>
+                    {rollResult.isCriticalFailure ? '💀 CRITICAL FAILURE' : 
+                     isInfected ? '☣️ INFECTED' : 
+                     isFighting ? '⚠️ FIGHTING IT' : '✓ CLEAR'}
                   </div>
                   
-                  <p className="text-lg mb-6">
-                    {isInfected 
-                      ? "The virus takes hold. You can feel it spreading..."
-                      : "Your body fights off the infection. This time."}
-                  </p>
+                  {isInfected && (
+                    <div className="bg-danger/20 border border-danger rounded-lg p-4 mb-6">
+                      <p className="text-lg mb-2">
+                        The virus takes hold. You can feel it spreading...
+                      </p>
+                      <div className="text-sm text-secondary space-y-1">
+                        <p>⏱️ Symptoms in <span className="text-danger font-bold">{outcome.symptomsIn}</span> minutes</p>
+                        <p>💀 Turning in <span className="text-danger font-bold">{outcome.turnedIn}</span> minutes</p>
+                      </div>
+                      <p className="text-xs text-muted mt-3">
+                        Find antibiotics immediately or this is the end.
+                      </p>
+                    </div>
+                  )}
+
+                  {isFighting && (
+                    <div className="bg-warning/20 border border-warning rounded-lg p-4 mb-6">
+                      <p className="text-lg mb-2">
+                        Your body is fighting the infection...
+                      </p>
+                      <p className="text-sm text-secondary">
+                        Symptoms in <span className="text-warning font-bold">{outcome.symptomsIn}</span> minutes
+                      </p>
+                      <p className="text-xs text-muted mt-3">
+                        Antibiotics can still save you. Find them before symptoms appear.
+                      </p>
+                    </div>
+                  )}
+
+                  {isClear && (
+                    <p className="text-lg mb-6">
+                      Your body fights off the infection. This time you got lucky.
+                    </p>
+                  )}
 
                   {/* Actions */}
                   <div className="flex justify-center gap-4">
-                    {isInfected && canSpendGuts && onSpendGuts && (
+                    {(isInfected || isFighting) && canSpendGuts && onSpendGuts && (
                       <button
                         onClick={onSpendGuts}
                         className="btn btn-primary"

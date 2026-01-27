@@ -218,6 +218,11 @@ export function useGameSession({
       updates.objectives = currentObjectives;
     }
 
+    // Handle kill count
+    if (changes.kills !== null && changes.kills !== undefined && changes.kills > 0) {
+      updates.killCount = currentState.killCount + changes.kills;
+    }
+
     return updates;
   }, []);
 
@@ -301,6 +306,8 @@ export function useGameSession({
       const newRollCount = gmResponse.roll?.result 
         ? gameState.rollCount + 1 
         : gameState.rollCount;
+      
+      const newKillCount = stateUpdates.killCount ?? gameState.killCount;
 
       // Update local state
       setGameState(prev => prev ? {
@@ -308,6 +315,7 @@ export function useGameSession({
         ...stateUpdates,
         messages: [...prev.messages, gmMessage],
         rollCount: newRollCount,
+        killCount: newKillCount,
         character: stateUpdates.character || prev.character,
         objectives: stateUpdates.objectives || prev.objectives,
       } : null);
@@ -317,7 +325,8 @@ export function useGameSession({
         await addMessage(gameIdRef.current, 'gm', gmResponse.narrative, gmResponse.roll?.result);
         await saveGameState({
           ...stateUpdates,
-          rollCount: newRollCount
+          rollCount: newRollCount,
+          killCount: newKillCount
         });
       } catch (err) {
         console.error('Failed to save GM response:', err);
