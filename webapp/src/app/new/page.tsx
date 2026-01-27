@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -19,6 +19,8 @@ import {
 } from '@/lib/types';
 import { createGame } from '@/lib/supabase/games';
 import CharacterPortrait from '@/components/game/CharacterPortrait';
+import CreationNarrationUI from '@/components/game/CreationNarrationUI';
+import { useCreationNarration } from '@/hooks/useCreationNarration';
 
 type CreationStep = 'background' | 'appearance' | 'attributes' | 'skills' | 'story';
 
@@ -130,6 +132,25 @@ export default function NewGame() {
   const router = useRouter();
   const [step, setStep] = useState<CreationStep>('background');
   
+  // Narration hook for atmospheric voice-over
+  const narration = useCreationNarration({ enabled: true });
+
+  // Play intro narration on mount
+  useEffect(() => {
+    // Small delay to let page render first
+    const timer = setTimeout(() => {
+      narration.playIntro();
+    }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Play narration when step changes
+  useEffect(() => {
+    narration.playForStep(step);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+  
   // Character data
   const [name, setName] = useState('');
   const [background, setBackground] = useState<Background | null>(null);
@@ -223,6 +244,9 @@ export default function NewGame() {
   const startGame = async () => {
     if (!background) return;
     
+    // Stop any narration before starting
+    narration.stop();
+    
     setIsCreating(true);
     setError(null);
 
@@ -267,6 +291,16 @@ export default function NewGame() {
 
   return (
     <div className="min-h-screen">
+      {/* Narration UI - mute button and subtitles */}
+      <CreationNarrationUI
+        isPlaying={narration.isPlaying}
+        isLoading={narration.isLoading}
+        isMuted={narration.isMuted}
+        subtitle={narration.currentSubtitle}
+        onToggleMute={narration.toggleMute}
+        onSkip={narration.stop}
+      />
+
       {/* Header */}
       <header className="border-b border-subtle">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
