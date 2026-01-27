@@ -21,6 +21,9 @@ import DiceRoll from '@/components/game/DiceRoll';
 import SceneImage from '@/components/game/SceneImage';
 import AudioNarration, { MuteToggle } from '@/components/game/AudioNarration';
 import { GameErrorBoundary } from '@/components/ErrorBoundary';
+import QuickActions from '@/components/game/QuickActions';
+import CombatTracker from '@/components/game/CombatTracker';
+import MobileNav, { CharacterMiniStatus, MobileTab } from '@/components/game/MobileNav';
 
 // Hooks
 import { useAudioNarration } from '@/hooks/useAudioNarration';
@@ -66,15 +69,6 @@ interface GMApiResponse {
   details?: string;
 }
 
-const QUICK_ACTIONS = [
-  { icon: '🔍', label: 'Search', action: 'I want to search the area carefully.', ariaLabel: 'Search the area' },
-  { icon: '👂', label: 'Listen', action: 'I stop and listen carefully for any sounds.', ariaLabel: 'Listen for sounds' },
-  { icon: '🤫', label: 'Sneak', action: 'I try to move quietly and stay hidden.', ariaLabel: 'Move quietly' },
-  { icon: '⚔️', label: 'Attack', action: 'I attack!', ariaLabel: 'Attack' },
-  { icon: '🗣️', label: 'Talk', action: 'I try to communicate.', ariaLabel: 'Try to communicate' },
-  { icon: '🏃', label: 'Run', action: 'I run!', ariaLabel: 'Run away' },
-];
-
 export default function GameSession({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -84,6 +78,8 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   const [aiError, setAiError] = useState<string | null>(null);
   const [currentSceneDescription, setCurrentSceneDescription] = useState<string | null>(null);
   const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<MobileTab>('story');
+  const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const gameIdRef = useRef<string>(resolvedParams.id);
   const lastGMMessageIdRef = useRef<string | null>(null);
@@ -364,6 +360,11 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
         setSceneImageUrl(null); // Clear cached image to trigger regeneration
       }
 
+      // Track last roll for combat tracker
+      if (gmResponse.roll?.result) {
+        setLastRoll(gmResponse.roll.result);
+      }
+
       // Create GM message
       const gmMessage: Message = {
         id: `msg-${Date.now() + 1}`,
@@ -493,6 +494,9 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
         </div>
       </header>
 
+      {/* Mobile Character Mini Status */}
+      <CharacterMiniStatus character={gameState.character} threat={gameState.threat} />
+
       {/* AI Error Banner */}
       {aiError && (
         <div 
@@ -536,7 +540,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
           )}
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 md:pb-4 mobile-content-padding">
             {gameState.messages.map((message) => (
               <div key={message.id} className="animate-fade-in">
                 <div className={`message ${
@@ -617,20 +621,36 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
               </div>
             </form>
 
-            {/* Quick Actions */}
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Quick actions">
-              {QUICK_ACTIONS.map((qa) => (
-                <button
-                  key={qa.label}
-                  onClick={() => handleSubmit(qa.action)}
-                  disabled={isLoading}
-                  className="quick-action disabled:opacity-50"
-                  aria-label={qa.ariaLabel}
-                >
-                  <span aria-hidden="true">{qa.icon}</span>
-                  <span>{qa.label}</span>
-                </button>
-              ))}
+            {/* Combat Tracker (shows when in combat/encounter) */}
+            {(gameState.threatState === 'encounter' || gameState.threatState === 'swarm') && (
+              <div className="mb-3">
+                <CombatTracker
+                  isActive={true}
+                  character={gameState.character}
+                  threat={gameState.threat}
+                  lastRoll={lastRoll}
+                />
+              </div>
+            )}
+
+            {/* Context-Aware Quick Actions */}
+            <div className="hidden md:block" role="group" aria-label="Quick actions">
+              <QuickActions
+                gameState={gameState}
+                onAction={handleSubmit}
+                disabled={isLoading}
+                maxActions={6}
+              />
+            </div>
+            
+            {/* Mobile Quick Actions (compact) */}
+            <div className="md:hidden" role="group" aria-label="Quick actions">
+              <QuickActions
+                gameState={gameState}
+                onAction={handleSubmit}
+                disabled={isLoading}
+                maxActions={4}
+              />
             </div>
           </div>
         </div>
@@ -646,6 +666,14 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
           />
         </div>
       </div>
+      
+      {/* Mobile Navigation */}
+      <MobileNav
+        activeTab={mobileTab}
+        onTabChange={setMobileTab}
+        character={gameState.character}
+        threat={gameState.threat}
+      />
     </div>
     </GameErrorBoundary>
   );

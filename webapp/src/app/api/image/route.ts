@@ -210,7 +210,7 @@ async function generateWithReplicate(prompt: string, type: 'portrait' | 'scene')
   throw new Error('Image generation timed out');
 }
 
-// Generate image using Google Gemini 3 Pro Image
+// Generate image using Google Gemini 3 Pro Image Preview
 async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): Promise<ImageGenerationResponse> {
   const apiKey = process.env.GEMINI_API_KEY;
   
@@ -223,8 +223,9 @@ async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): P
     ? STYLE_PRESETS.portrait.negative 
     : STYLE_PRESETS.scene.negative;
 
+  // Use gemini-3-pro-image-preview for image generation
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: {
@@ -233,12 +234,11 @@ async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): P
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `Generate an image: ${prompt}\n\nAvoid: ${negativePrompt}`
+            text: `Generate an image: ${prompt}\n\nAvoid: ${negativePrompt}\n\nAspect ratio: ${aspectRatio}`
           }]
         }],
         generationConfig: {
-          responseModalities: ['image', 'text'],
-          imageSizePreference: type === 'portrait' ? '1024x1024' : '1792x1024',
+          responseModalities: ['TEXT', 'IMAGE'],
         },
       }),
     }
@@ -258,6 +258,13 @@ async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): P
   );
   
   if (!imagePart?.inlineData) {
+    // Check if there's an error message in the response
+    const textPart = data.candidates?.[0]?.content?.parts?.find(
+      (part: { text?: string }) => part.text
+    );
+    if (textPart?.text) {
+      console.error('Gemini returned text instead of image:', textPart.text);
+    }
     throw new Error('No image returned from Gemini');
   }
   
@@ -380,10 +387,11 @@ export async function GET() {
   return NextResponse.json({
     status: 'ok',
     providers: {
-      openai: hasOpenAI,
-      gemini: hasGemini,
-      replicate: hasReplicate
+      openai: hasOpenAI ? 'gpt-image-1.5' : false,
+      gemini: hasGemini ? 'gemini-3-pro-image-preview' : false,
+      replicate: hasReplicate ? 'sdxl' : false
     },
-    configured: hasOpenAI || hasGemini || hasReplicate
+    configured: hasOpenAI || hasGemini || hasReplicate,
+    priority: hasOpenAI ? 'openai' : hasGemini ? 'gemini' : hasReplicate ? 'replicate' : 'none'
   });
 }

@@ -373,4 +373,118 @@ body {
   .die {
     @apply w-8 h-8 text-base;
   }
+  
+  /* Add bottom padding for mobile nav */
+  .mobile-content-padding {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Safe area padding for notched phones */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Status indicator pulses */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+  50% { opacity: 0.8; box-shadow: 0 0 0 4px transparent; }
+}
+
+.animate-status-pulse {
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+/* Backdrop blur fallback */
+@supports not (backdrop-filter: blur(12px)) {
+  .backdrop-blur-lg {
+    background-color: var(--bg-surface);
+  }
+}
+
+/* Custom selection for game text */
+.game-text::selection {
+  background-color: var(--accent-gold-dim);
+  color: var(--text-primary);
+}
+
+/* Threat level animation */
+@keyframes threat-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.animate-threat-critical {
+  animation: threat-pulse 0.5s ease-in-out infinite;
+}
+
+/* Combat flash */
+@keyframes combat-flash {
+  0% { background-color: var(--danger); }
+  100% { background-color: transparent; }
+}
+
+.animate-combat-flash {
+  animation: combat-flash 0.3s ease-out;
+}
+
+/* Skeleton loading */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-card) 25%,
+    var(--bg-elevated) 50%,
+    var(--bg-card) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+/* Typography for narrative */
+.narrative-text {
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+}
+
+.narrative-text em {
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.narrative-text strong {
+  font-weight: 600;
+  color: var(--accent-gold);
+}
+
+/* Scrollable areas with fading edges */
+.scroll-fade-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2rem;
+  background: linear-gradient(to top, var(--bg-primary), transparent);
+  pointer-events: none;
+}
+
+.scroll-fade-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2rem;
+  background: linear-gradient(to bottom, var(--bg-primary), transparent);
+  pointer-events: none;
+  z-index: 1;
 }
