@@ -1,0 +1,358 @@
+@import "tailwindcss";
+
+:root {
+  /* Background colors */
+  --bg-primary: #0a0a0a;
+  --bg-surface: #1a1a1a;
+  --bg-card: #242424;
+  --bg-elevated: #2a2a2a;
+  
+  /* Border colors */
+  --border-subtle: #333333;
+  --border-medium: #444444;
+  
+  /* Text colors */
+  --text-primary: #e8e8e8;
+  --text-secondary: #888888;
+  --text-muted: #555555;
+  
+  /* Accent colors */
+  --accent-gold: #c9a227;
+  --accent-gold-dim: #8b7019;
+  --danger: #b33a3a;
+  --danger-dim: #7a2828;
+  --success: #3a7d44;
+  --success-dim: #2a5a32;
+  --warning: #c97b27;
+  --warning-dim: #8b5619;
+  --info: #3a6d9e;
+  --info-dim: #2a4d6e;
+  
+  /* Threat gradient */
+  --threat-low: #3a7d44;
+  --threat-medium: #c9a227;
+  --threat-high: #c97b27;
+  --threat-critical: #b33a3a;
+  
+  /* Dice colors */
+  --die-standard: #333333;
+  --die-hit: #3a7d44;
+  --die-explode: #c9a227;
+  --die-one: #b33a3a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background-color: var(--accent-gold);
+  color: var(--bg-primary);
+}
+
+/* Utility classes */
+.text-gold { color: var(--accent-gold); }
+.text-danger { color: var(--danger); }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+.text-info { color: var(--info); }
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-secondary); }
+
+.bg-surface { background-color: var(--bg-surface); }
+.bg-card { background-color: var(--bg-card); }
+.bg-elevated { background-color: var(--bg-elevated); }
+
+.border-subtle { border-color: var(--border-subtle); }
+.border-medium { border-color: var(--border-medium); }
+
+/* Glow effects */
+.glow-gold {
+  box-shadow: 0 0 10px var(--accent-gold), 0 0 20px var(--accent-gold-dim);
+}
+
+.glow-danger {
+  box-shadow: 0 0 10px var(--danger), 0 0 20px var(--danger-dim);
+}
+
+.glow-success {
+  box-shadow: 0 0 10px var(--success), 0 0 20px var(--success-dim);
+}
+
+/* Dice styling */
+.die {
+  @apply w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold transition-all;
+  background-color: var(--die-standard);
+  border: 2px solid var(--border-medium);
+}
+
+.die-hit {
+  background-color: var(--die-hit);
+  border-color: var(--success);
+  box-shadow: 0 0 8px var(--success-dim);
+}
+
+.die-explode {
+  background-color: var(--die-explode);
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 8px var(--accent-gold-dim);
+}
+
+.die-one {
+  background-color: var(--die-one);
+  border-color: var(--danger);
+}
+
+/* Threat meter */
+.threat-meter {
+  @apply h-3 rounded-full overflow-hidden;
+  background-color: var(--bg-surface);
+}
+
+.threat-fill {
+  @apply h-full transition-all duration-500;
+}
+
+.threat-low { background-color: var(--threat-low); }
+.threat-medium { background-color: var(--threat-medium); }
+.threat-high { background-color: var(--threat-high); }
+.threat-critical { background-color: var(--threat-critical); }
+
+/* Wound slots */
+.wound-slot {
+  @apply w-5 h-5 rounded-sm border-2 transition-colors;
+  background-color: transparent;
+  border-color: var(--border-medium);
+}
+
+.wound-slot-filled {
+  background-color: var(--danger);
+  border-color: var(--danger);
+}
+
+.wound-slot-bruised { border-color: var(--text-muted); }
+.wound-slot-bleeding { border-color: var(--warning); }
+.wound-slot-broken { border-color: var(--danger); }
+.wound-slot-critical { border-color: #ff0000; }
+
+/* Stress slots */
+.stress-slot {
+  @apply w-4 h-4 rounded-full border-2 transition-colors;
+  background-color: transparent;
+  border-color: var(--border-medium);
+}
+
+.stress-slot-filled {
+  background-color: var(--info);
+  border-color: var(--info);
+}
+
+/* Guts display */
+.guts-pip {
+  @apply w-4 h-4 rounded-full border-2 transition-colors;
+  background-color: transparent;
+  border-color: var(--accent-gold-dim);
+}
+
+.guts-pip-filled {
+  background-color: var(--accent-gold);
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 4px var(--accent-gold-dim);
+}
+
+/* Card styles */
+.game-card {
+  @apply rounded-lg overflow-hidden transition-all duration-200 cursor-pointer;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.game-card:hover {
+  border-color: var(--accent-gold-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Panel styles */
+.panel {
+  @apply rounded-lg p-4;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.panel-section {
+  @apply py-3 border-b;
+  border-color: var(--border-subtle);
+}
+
+.panel-section:last-child {
+  @apply border-b-0;
+}
+
+.panel-label {
+  @apply text-xs uppercase tracking-wider mb-2;
+  color: var(--text-muted);
+}
+
+/* Message styles */
+.message {
+  @apply rounded-lg p-4 mb-3;
+}
+
+.message-gm {
+  background-color: var(--bg-card);
+  border-left: 3px solid var(--accent-gold);
+}
+
+.message-player {
+  background-color: var(--bg-elevated);
+  border-left: 3px solid var(--info);
+}
+
+.message-system {
+  background-color: var(--bg-surface);
+  border-left: 3px solid var(--text-muted);
+  font-style: italic;
+}
+
+/* Button styles */
+.btn {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-medium);
+}
+
+.btn:hover {
+  background-color: var(--bg-elevated);
+  border-color: var(--text-muted);
+}
+
+.btn-primary {
+  background-color: var(--accent-gold);
+  color: var(--bg-primary);
+  border-color: var(--accent-gold);
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-gold-dim);
+  border-color: var(--accent-gold-dim);
+}
+
+.btn-danger {
+  background-color: var(--danger);
+  color: var(--text-primary);
+  border-color: var(--danger);
+}
+
+.btn-danger:hover {
+  background-color: var(--danger-dim);
+  border-color: var(--danger-dim);
+}
+
+/* Quick action buttons */
+.quick-action {
+  @apply px-3 py-2 rounded-lg text-sm transition-all duration-200 flex items-center gap-2;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.quick-action:hover {
+  background-color: var(--bg-elevated);
+  border-color: var(--accent-gold-dim);
+}
+
+/* Input styles */
+.input {
+  @apply w-full px-4 py-3 rounded-lg transition-colors;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.input:focus {
+  border-color: var(--accent-gold);
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes dice-roll {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(90deg) scale(1.1); }
+  50% { transform: rotate(180deg) scale(1); }
+  75% { transform: rotate(270deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+.animate-dice-roll {
+  animation: dice-roll 0.5s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 768px) {
+  .panel {
+    @apply p-3;
+  }
+  
+  .die {
+    @apply w-8 h-8 text-base;
+  }
+}

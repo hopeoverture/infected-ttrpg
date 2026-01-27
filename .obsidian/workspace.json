@@ -1,0 +1,230 @@
+{
+  "main": {
+    "id": "d8dc1db3d9e043be",
+    "type": "split",
+    "children": [
+      {
+        "id": "137ede484bfd9195",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "43eda7e64359ef0b",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "PLAYER-REFERENCE.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "PLAYER-REFERENCE"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "55191590f22ebfd0",
+    "type": "split",
+    "children": [
+      {
+        "id": "765799b5e6384c36",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5120d56fbec47734",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "669bdf809edb0078",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "621720e02c1834b4",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "c6f93424bf2fbb17",
+    "type": "split",
+    "children": [
+      {
+        "id": "d5daeffc05dc6f8f",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "eeb78a572bc01523",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "PLAYER-REFERENCE.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for PLAYER-REFERENCE"
+            }
+          },
+          {
+            "id": "27e71daccb8b70b8",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "PLAYER-REFERENCE.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from PLAYER-REFERENCE"
+            }
+          },
+          {
+            "id": "aa72912c1c4d2ab9",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "ba8ab26f94f2d2e9",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "84b49f9a5595a00a",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "PLAYER-REFERENCE.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of PLAYER-REFERENCE"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "43eda7e64359ef0b",
+  "lastOpenFiles": [
+    "webapp/src/app/auth/callback/route.ts",
+    "webapp/src/app/auth/callback",
+    "webapp/src/app/auth",
+    "webapp/src/app/signup/page.tsx",
+    "webapp/src/app/signup",
+    "webapp/src/app/login/page.tsx",
+    "webapp/src/app/login",
+    "webapp/src/middleware.ts",
+    "webapp/src/lib/supabase/games.ts",
+    "webapp/src/lib/supabase/types.ts",
+    "webapp/src/lib/supabase/server.ts",
+    "webapp/node_modules/iceberg-js/README.md",
+    "webapp/node_modules/eslint-plugin-import/memo-parser/README.md",
+    "webapp/DESIGN-SPEC.md",
+    "webapp/node_modules/next/dist/compiled/regenerator-runtime/README.md",
+    "webapp/node_modules/next/dist/compiled/react-refresh/README.md",
+    "webapp/node_modules/@typescript-eslint/eslint-plugin/README.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/tabindex-no-positive.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/scope.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/role-supports-aria-props.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/prefer-tag-over-role.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-static-element-interactions.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-onchange.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/role-has-required-aria-props.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-noninteractive-element-to-interactive-role.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-noninteractive-tabindex.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-redundant-roles.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-noninteractive-element-interactions.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-autofocus.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-interactive-element-to-noninteractive-role.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-distracting-elements.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-aria-hidden-on-focusable.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/mouse-events-have-key-events.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/media-has-caption.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/no-access-key.md",
+    "webapp/node_modules/eslint-plugin-jsx-a11y/docs/rules/lang.md",
+    "webapp/public/window.svg",
+    "webapp/public/vercel.svg",
+    "webapp/public/next.svg",
+    "webapp/public/globe.svg",
+    "webapp/public/file.svg"
+  ]
+}

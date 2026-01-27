@@ -1,0 +1,435 @@
+// Game database operations
+
+import { createClient } from './client';
+import { Database, GameRow, GameSummaryRow, MessageRow } from './types';
+import { 
+  GameState, 
+  GameSummary, 
+  Character, 
+  Message,
+  Background,
+  Attributes,
+  Skills,
+  BACKGROUNDS,
+  DEFAULT_SKILLS
+} from '../types';
+
+// ============================================
+// Type Converters
+// ============================================
+
+export function dbRowToGameSummary(row: GameSummaryRow): GameSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    characterName: row.character_name,
+    background: row.background as Background,
+    day: row.day,
+    threat: row.threat,
+    updatedAt: new Date(row.updated_at),
+    isGameOver: row.is_game_over,
+    deathDay: row.death_day ?? undefined
+  };
+}
+
+export function dbRowToGameState(row: GameRow, messages: MessageRow[]): GameState {
+  const character = row.character as unknown as Character;
+  const location = row.location as unknown as GameState['location'];
+  const party = (row.party as unknown as GameState['party']) || [];
+  const objectives = (row.objectives as unknown as GameState['objectives']) || [];
+  const combatState = row.combat_state as unknown as GameState['combatState'];
+
+  return {
+    id: row.id,
+    title: row.title,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    character,
+    day: row.day,
+    time: row.time_of_day,
+    location,
+    threat: row.threat,
+    threatState: row.threat_state,
+    party,
+    objectives,
+    messages: messages.map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      timestamp: new Date(m.created_at),
+      roll: m.roll_data as unknown as Message['roll']
+    })),
+    combatState,
+    sessionStartTime: row.session_start_time ? new Date(row.session_start_time) : new Date(),
+    rollCount: row.roll_count,
+    killCount: row.kill_count
+  };
+}
+
+// ============================================
+// Read Operations
+// ============================================
+
+export async function getGames(): Promise<GameSummary[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('game_summaries')
+    .select('*')
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching games:', error);
+    throw error;
+  }
+
+  return (data || []).map(dbRowToGameSummary);
+}
+
+export async function getGame(gameId: string): Promise<GameState | null> {
+  const supabase = createClient();
+
+  // Get game data
+  const { data: gameData, error: gameError } = await supabase
+    .from('games')
+    .select('*')
+    .eq('id', gameId)
+    .single();
+
+  if (gameError) {
+    if (gameError.code === 'PGRST116') return null; // Not found
+    console.error('Error fetching game:', gameError);
+    throw gameError;
+  }
+
+  // Get messages
+  const { data: messagesData, error: messagesError } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('game_id', gameId)
+    .order('sequence_num', { ascending: true });
+
+  if (messagesError) {
+    console.error('Error fetching messages:', messagesError);
+    throw messagesError;
+  }
+
+  return dbRowToGameState(gameData, messagesData || []);
+}
+
+// ============================================
+// Create Operations
+// ============================================
+
+export interface CreateGameParams {
+  name: string;
+  background: Background;
+  attributes: Attributes;
+  skills: Skills;
+  motivation: string;
+  scenario: 'day-one' | 'week-in' | 'custom';
+  customScenario?: string;
+}
+
+export async function createGame(params: CreateGameParams): Promise<string> {
+  const supabase = createClient();
+  
+  // Get current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('Must be logged in to create a game');
+  }
+
+  const backgroundData = BACKGROUNDS[params.background];
+  
+  // Apply background skill bonus
+  const skills = { ...params.skills };
+  skills[backgroundData.bonus] = Math.min(4, skills[backgroundData.bonus] + 1);
+
+  // Calculate derived stats
+  const maxStress = params.attributes.nerve + 3;
+  const carryingCapacity = params.attributes.grit + 4;
+  const bruisedBonus = Math.max(0, params.attributes.grit - 2);
+
+  // Create character object
+  const character: Character = {
+    id: crypto.randomUUID(),
+    name: params.name,
+    background: params.background,
+    motivation: params.motivation,
+    attributes: params.attributes,
+    skills,
+    wounds: { bruised: 0, bleeding: 0, broken: 0, critical: false },
+    woundCapacity: { bruised: 4 + bruisedBonus, bleeding: 3, broken: 2, critical: 1 },
+    stress: 0,
+    maxStress,
+    guts: 3,
+    gutsEarnedThisSession: 0,
+    inventory: backgroundData.gear.map((name, i) => ({
+      id: `item-${i}`,
+      name,
+      quantity: 1,
+      isSignificant: true
+    })),
+    weapons: [], // Will be populated based on background gear
+    armor: null,
+    carryingCapacity,
+    food: 3,
+    water: 3
+  };
+
+  // Parse weapons from gear
+  const weaponGear = backgroundData.gear.filter(g => 
+    g.toLowerCase().includes('pistol') || 
+    g.toLowerCase().includes('rifle') ||
+    g.toLowerCase().includes('knife') ||
+    g.toLowerCase().includes('bow') ||
+    g.toLowerCase().includes('bat')
+  );
+  
+  // Simple weapon assignment (can be expanded)
+  weaponGear.forEach((g, i) => {
+    if (g.toLowerCase().includes('pistol')) {
+      const suppressed = g.toLowerCase().includes('suppressed');
+      character.weapons.push({
+        id: `weapon-${i}`,
+        name: suppressed ? 'Suppressed Pistol' : 'Pistol',
+        damage: 3,
+        range: 'Close/Med',
+        noise: suppressed ? 2 : 5,
+        properties: suppressed ? ['One-Handed', 'Quiet'] : ['One-Handed', 'Loud'],
+        durability: suppressed ? 4 : 5,
+        maxDurability: suppressed ? 4 : 5,
+        ammo: parseInt(g.match(/\d+/)?.[0] || '12'),
+        maxAmmo: 15
+      });
+    } else if (g.toLowerCase().includes('rifle')) {
+      character.weapons.push({
+        id: `weapon-${i}`,
+        name: 'Rifle',
+        damage: 4,
+        range: 'Med/Far',
+        noise: 6,
+        properties: ['Two-Handed', 'Loud'],
+        durability: 5,
+        maxDurability: 5,
+        ammo: parseInt(g.match(/\d+/)?.[0] || '10'),
+        maxAmmo: 20
+      });
+    } else if (g.toLowerCase().includes('knife')) {
+      character.weapons.push({
+        id: `weapon-${i}`,
+        name: g.includes('Combat') ? 'Combat Knife' : 'Knife',
+        damage: 2,
+        range: 'Melee',
+        noise: 1,
+        properties: ['Fast', 'Quiet'],
+        durability: 4,
+        maxDurability: 4
+      });
+    } else if (g.toLowerCase().includes('bow')) {
+      character.weapons.push({
+        id: `weapon-${i}`,
+        name: 'Bow',
+        damage: 3,
+        range: 'Med/Far',
+        noise: 1,
+        properties: ['Two-Handed', 'Quiet', 'Slow'],
+        durability: 4,
+        maxDurability: 4,
+        ammo: parseInt(g.match(/\d+/)?.[0] || '12'),
+        maxAmmo: 20
+      });
+    } else if (g.toLowerCase().includes('bat')) {
+      character.weapons.push({
+        id: `weapon-${i}`,
+        name: 'Baseball Bat',
+        damage: 2,
+        range: 'Melee',
+        noise: 2,
+        properties: ['Two-Handed', 'Brutal'],
+        durability: 3,
+        maxDurability: 3
+      });
+    }
+  });
+
+  // Check for armor
+  if (backgroundData.gear.some(g => g.toLowerCase().includes('armor'))) {
+    character.armor = {
+      name: 'Light Armor',
+      reduction: 2,
+      stealthPenalty: 1,
+      durability: 4,
+      maxDurability: 4
+    };
+  }
+
+  // Starting location
+  const location = {
+    name: params.scenario === 'day-one' ? 'Your Home' : 'Abandoned Building',
+    description: params.scenario === 'day-one' 
+      ? 'The familiar walls of your home. But something is very wrong outside.'
+      : 'A temporary shelter. Better than nothing.',
+    lightLevel: 'bright' as const,
+    scarcity: 'moderate' as const,
+    ambientThreat: params.scenario === 'day-one' ? 1 : 3,
+    searched: false
+  };
+
+  // Create game title
+  const title = params.scenario === 'day-one' 
+    ? 'Day One' 
+    : params.scenario === 'week-in' 
+      ? 'Week In' 
+      : params.customScenario?.slice(0, 30) || 'New Story';
+
+  // Insert game
+  const { data: gameData, error: gameError } = await supabase
+    .from('games')
+    .insert({
+      user_id: user.id,
+      title,
+      character: character as unknown as Database['public']['Tables']['games']['Insert']['character'],
+      day: params.scenario === 'day-one' ? 1 : 7,
+      time_of_day: 'day',
+      location: location as unknown as Database['public']['Tables']['games']['Insert']['location'],
+      threat: params.scenario === 'day-one' ? 2 : 4,
+      threat_state: 'safe',
+      session_start_time: new Date().toISOString()
+    })
+    .select('id')
+    .single();
+
+  if (gameError) {
+    console.error('Error creating game:', gameError);
+    throw gameError;
+  }
+
+  return gameData.id;
+}
+
+// ============================================
+// Update Operations
+// ============================================
+
+export async function updateGame(gameId: string, updates: Partial<GameState>): Promise<void> {
+  const supabase = createClient();
+
+  const dbUpdates: Database['public']['Tables']['games']['Update'] = {};
+
+  if (updates.title !== undefined) dbUpdates.title = updates.title;
+  if (updates.character !== undefined) dbUpdates.character = updates.character as unknown as Database['public']['Tables']['games']['Update']['character'];
+  if (updates.day !== undefined) dbUpdates.day = updates.day;
+  if (updates.time !== undefined) dbUpdates.time_of_day = updates.time;
+  if (updates.location !== undefined) dbUpdates.location = updates.location as unknown as Database['public']['Tables']['games']['Update']['location'];
+  if (updates.threat !== undefined) dbUpdates.threat = updates.threat;
+  if (updates.threatState !== undefined) dbUpdates.threat_state = updates.threatState;
+  if (updates.party !== undefined) dbUpdates.party = updates.party as unknown as Database['public']['Tables']['games']['Update']['party'];
+  if (updates.objectives !== undefined) dbUpdates.objectives = updates.objectives as unknown as Database['public']['Tables']['games']['Update']['objectives'];
+  if (updates.combatState !== undefined) dbUpdates.combat_state = updates.combatState as unknown as Database['public']['Tables']['games']['Update']['combat_state'];
+  if (updates.rollCount !== undefined) dbUpdates.roll_count = updates.rollCount;
+  if (updates.killCount !== undefined) dbUpdates.kill_count = updates.killCount;
+
+  const { error } = await supabase
+    .from('games')
+    .update(dbUpdates)
+    .eq('id', gameId);
+
+  if (error) {
+    console.error('Error updating game:', error);
+    throw error;
+  }
+}
+
+export async function addMessage(
+  gameId: string, 
+  role: 'gm' | 'player' | 'system',
+  content: string,
+  rollData?: Message['roll']
+): Promise<Message> {
+  const supabase = createClient();
+
+  // Get next sequence number
+  const { data: seqData, error: seqError } = await supabase
+    .rpc('get_next_message_sequence', { p_game_id: gameId });
+
+  if (seqError) {
+    console.error('Error getting sequence:', seqError);
+    throw seqError;
+  }
+
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({
+      game_id: gameId,
+      role,
+      content,
+      roll_data: rollData as unknown as Database['public']['Tables']['messages']['Insert']['roll_data'],
+      sequence_num: seqData
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error adding message:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    role: data.role,
+    content: data.content,
+    timestamp: new Date(data.created_at),
+    roll: data.roll_data as unknown as Message['roll']
+  };
+}
+
+// ============================================
+// Delete Operations
+// ============================================
+
+export async function deleteGame(gameId: string): Promise<void> {
+  const supabase = createClient();
+
+  const { error } = await supabase
+    .from('games')
+    .delete()
+    .eq('id', gameId);
+
+  if (error) {
+    console.error('Error deleting game:', error);
+    throw error;
+  }
+}
+
+// ============================================
+// Game Over
+// ============================================
+
+export async function endGame(gameId: string, deathCause: string): Promise<void> {
+  const supabase = createClient();
+
+  // Get current day
+  const { data: gameData, error: fetchError } = await supabase
+    .from('games')
+    .select('day')
+    .eq('id', gameId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const { error } = await supabase
+    .from('games')
+    .update({
+      is_game_over: true,
+      death_day: gameData.day,
+      death_cause: deathCause
+    })
+    .eq('id', gameId);
+
+  if (error) {
+    console.error('Error ending game:', error);
+    throw error;
+  }
+}
