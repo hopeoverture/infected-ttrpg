@@ -129,6 +129,8 @@ export interface CreateGameParams {
   scenario: 'day-one' | 'week-in' | 'custom';
   customScenario?: string;
   portraitUrl?: string;
+  appearance?: import('../types').CharacterAppearance;
+  artStyle?: import('../types').ArtStyle;
 }
 
 export async function createGame(params: CreateGameParams): Promise<string> {
@@ -158,6 +160,8 @@ export async function createGame(params: CreateGameParams): Promise<string> {
     background: params.background,
     motivation: params.motivation,
     portraitUrl: params.portraitUrl,
+    appearance: params.appearance,
+    artStyle: params.artStyle,
     attributes: params.attributes,
     skills,
     wounds: { bruised: 0, bleeding: 0, broken: 0, critical: false },

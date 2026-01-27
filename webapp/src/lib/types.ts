@@ -1,5 +1,43 @@
 // INFECTED Web App - Core Types
 
+// Character Appearance Options
+export type AgeRange = 'young' | 'adult' | 'middle-aged' | 'older';
+export type BodyType = 'slight' | 'average' | 'athletic' | 'heavy';
+export type Gender = 'male' | 'female' | 'androgynous';
+
+export interface CharacterAppearance {
+  gender: Gender;
+  age: AgeRange;
+  bodyType: BodyType;
+  skinTone: string;
+  hairStyle: string;
+  hairColor: string;
+  facialHair?: string;
+  distinguishingFeatures: string[];
+  clothing?: string;
+}
+
+// Art Style Options
+export type ArtStyle = 'realistic' | 'cinematic' | 'graphic-novel' | 'gritty' | 'painted';
+
+export const ART_STYLE_PROMPTS: Record<ArtStyle, string> = {
+  'realistic': 'photorealistic, detailed, natural lighting',
+  'cinematic': 'cinematic lighting, movie still, dramatic atmosphere, film grain',
+  'graphic-novel': 'graphic novel style, bold shadows, high contrast, comic book aesthetic',
+  'gritty': 'gritty realism, harsh lighting, desaturated colors, raw documentary style',
+  'painted': 'digital painting, painterly style, artistic brushstrokes, concept art'
+};
+
+export const DEFAULT_APPEARANCE: CharacterAppearance = {
+  gender: 'male',
+  age: 'adult',
+  bodyType: 'average',
+  skinTone: 'medium',
+  hairStyle: 'short',
+  hairColor: 'brown',
+  distinguishingFeatures: []
+};
+
 export type Background = 
   | 'survivor' | 'soldier' | 'medic' | 'mechanic' | 'scout' 
   | 'leader' | 'hunter' | 'criminal' | 'veterinarian' | 'professor' 
@@ -101,6 +139,8 @@ export interface Character {
   background: Background;
   motivation: string;
   portraitUrl?: string;
+  appearance?: CharacterAppearance;
+  artStyle?: ArtStyle;
   attributes: Attributes;
   skills: Skills;
   wounds: Wounds;

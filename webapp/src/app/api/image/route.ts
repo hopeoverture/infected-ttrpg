@@ -6,14 +6,20 @@ import {
   createRateLimitResponse,
   createRateLimitHeaders 
 } from '@/lib/rate-limit';
+import { ArtStyle, ART_STYLE_PROMPTS } from '@/lib/types';
 
 // Image generation types
 interface ImageGenerationRequest {
   type: 'portrait' | 'scene';
-  prompt: string;
+  prompt?: string;
   characterName?: string;
   characterBackground?: string;
+  appearance?: string;  // Pre-built appearance description
+  artStyle?: ArtStyle;
   sceneDescription?: string;
+  locationName?: string;
+  timeOfDay?: string;
+  mood?: string;
 }
 
 interface ImageGenerationResponse {
@@ -25,12 +31,12 @@ interface ImageGenerationResponse {
 // Style presets for consistent horror aesthetic
 const STYLE_PRESETS = {
   portrait: {
-    base: 'cinematic portrait, dramatic lighting, post-apocalyptic survivor, gritty realistic style, dark atmospheric mood, zombie apocalypse setting',
-    negative: 'cartoon, anime, gore, blood, wounds, deformed, distorted, blurry, text, watermark, signature'
+    base: 'dramatic lighting, post-apocalyptic survivor, dark atmospheric mood, zombie apocalypse setting',
+    negative: 'cartoon, anime, gore, blood, wounds, deformed, distorted, blurry, text, watermark, signature, mutation, extra limbs, bad anatomy'
   },
   scene: {
-    base: 'cinematic scene, post-apocalyptic environment, abandoned, desolate, dramatic lighting, atmospheric fog, horror mood, professional photography',
-    negative: 'cartoon, anime, gore, people, zombies, monsters, text, watermark, bright cheerful, colorful'
+    base: 'post-apocalyptic environment, abandoned, desolate, dramatic lighting, atmospheric fog, horror mood, professional photography',
+    negative: 'cartoon, anime, gore, people, zombies, monsters, text, watermark, bright cheerful, colorful, happy'
   }
 };
 
@@ -38,28 +44,38 @@ const STYLE_PRESETS = {
 function buildPortraitPrompt(
   characterName: string,
   background: string,
-  details?: string
+  appearance?: string,
+  artStyle?: ArtStyle,
+  additionalDetails?: string
 ): string {
   const backgroundDescriptions: Record<string, string> = {
-    survivor: 'weathered civilian with resourceful look',
-    soldier: 'military veteran with tactical gear and dog tags',
-    medic: 'medical professional with scrubs or white coat',
-    mechanic: 'blue collar worker with grease stains and work clothes',
-    scout: 'stealthy figure in dark practical clothing',
-    leader: 'charismatic figure with commanding presence',
-    hunter: 'rugged outdoorsman in camo or earth tones',
-    criminal: 'street-smart figure with leather jacket',
-    veterinarian: 'animal care professional with gentle eyes',
-    professor: 'intellectual figure with glasses',
-    enforcer: 'intimidating figure with muscular build',
-    ranger: 'wilderness expert in outdoor gear'
+    survivor: 'resourceful civilian survivor',
+    soldier: 'military veteran with tactical gear',
+    medic: 'medical professional',
+    mechanic: 'blue collar mechanic',
+    scout: 'stealthy scout in dark clothing',
+    leader: 'charismatic leader',
+    hunter: 'rugged hunter in outdoor gear',
+    criminal: 'street-smart figure',
+    veterinarian: 'animal care professional',
+    professor: 'intellectual academic',
+    enforcer: 'intimidating enforcer',
+    ranger: 'wilderness ranger'
   };
 
   const backgroundDesc = backgroundDescriptions[background.toLowerCase()] || 'hardened survivor';
+  const stylePrompt = artStyle ? ART_STYLE_PROMPTS[artStyle] : ART_STYLE_PROMPTS.cinematic;
   
-  const prompt = `Portrait of ${characterName}, a ${backgroundDesc}, ${details || 'determined expression'}, ${STYLE_PRESETS.portrait.base}`;
+  // Build the prompt with appearance details
+  const parts = [
+    `Portrait of ${characterName}`,
+    appearance || backgroundDesc,  // Use detailed appearance if provided
+    additionalDetails || 'determined expression, intense gaze',
+    stylePrompt,
+    STYLE_PRESETS.portrait.base
+  ];
   
-  return prompt;
+  return parts.filter(Boolean).join(', ');
 }
 
 // Build optimized prompt for scene images
@@ -67,26 +83,29 @@ function buildScenePrompt(
   locationName: string,
   description: string,
   timeOfDay?: string,
-  mood?: string
+  mood?: string,
+  artStyle?: ArtStyle
 ): string {
   const timeDescriptions: Record<string, string> = {
-    dawn: 'early morning golden hour light, misty',
+    dawn: 'early morning golden hour light, misty atmosphere',
     day: 'harsh daylight, high contrast shadows',
-    dusk: 'orange sunset light, long shadows',
-    night: 'moonlit darkness, blue tones, shadows'
+    dusk: 'orange sunset light, long dramatic shadows',
+    night: 'moonlit darkness, blue tones, deep shadows'
   };
 
   const moodDescriptions: Record<string, string> = {
     tense: 'suspenseful atmosphere, something lurking',
-    safe: 'momentary calm, but danger nearby',
+    safe: 'momentary calm, eerie quiet',
     dangerous: 'immediate threat, ominous presence',
-    desolate: 'empty, abandoned, lonely'
+    desolate: 'empty, abandoned, lonely',
+    chaotic: 'destruction, debris, aftermath of violence'
   };
 
   const timeDesc = timeDescriptions[timeOfDay || 'day'] || 'harsh daylight';
   const moodDesc = moodDescriptions[mood || 'tense'] || 'suspenseful atmosphere';
+  const stylePrompt = artStyle ? ART_STYLE_PROMPTS[artStyle] : ART_STYLE_PROMPTS.cinematic;
 
-  const prompt = `${locationName}, ${description}, ${timeDesc}, ${moodDesc}, ${STYLE_PRESETS.scene.base}`;
+  const prompt = `${locationName}, ${description}, ${timeDesc}, ${moodDesc}, ${stylePrompt}, ${STYLE_PRESETS.scene.base}`;
   
   return prompt;
 }
@@ -99,7 +118,7 @@ async function generateWithOpenAI(prompt: string, type: 'portrait' | 'scene'): P
     throw new Error('OpenAI API key not configured');
   }
 
-  const size = type === 'portrait' ? '1024x1024' : '1792x1024'; // Portrait is square, scenes are wide
+  const size = type === 'portrait' ? '1024x1024' : '1792x1024';
   
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
@@ -139,14 +158,12 @@ async function generateWithReplicate(prompt: string, type: 'portrait' | 'scene')
     throw new Error('Replicate API token not configured');
   }
 
-  // Use SDXL for better quality
   const modelVersion = 'stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b';
   
   const negativePrompt = type === 'portrait' 
     ? STYLE_PRESETS.portrait.negative 
     : STYLE_PRESETS.scene.negative;
 
-  // Start the prediction
   const createResponse = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: {
@@ -175,7 +192,6 @@ async function generateWithReplicate(prompt: string, type: 'portrait' | 'scene')
 
   const prediction = await createResponse.json();
   
-  // Poll for completion (max 60 seconds)
   const maxAttempts = 30;
   let attempts = 0;
   
@@ -209,7 +225,7 @@ async function generateWithReplicate(prompt: string, type: 'portrait' | 'scene')
   throw new Error('Image generation timed out');
 }
 
-// Generate image using Google Gemini 3 Pro Image Preview
+// Generate image using Google Gemini
 async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): Promise<ImageGenerationResponse> {
   const apiKey = process.env.GEMINI_API_KEY;
   
@@ -222,7 +238,6 @@ async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): P
     ? STYLE_PRESETS.portrait.negative 
     : STYLE_PRESETS.scene.negative;
 
-  // Use gemini-3-pro-image-preview for image generation
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
     {
@@ -251,13 +266,11 @@ async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): P
 
   const data = await response.json();
   
-  // Extract image from response
   const imagePart = data.candidates?.[0]?.content?.parts?.find(
     (part: { inlineData?: { mimeType: string; data: string } }) => part.inlineData
   );
   
   if (!imagePart?.inlineData) {
-    // Check if there's an error message in the response
     const textPart = data.candidates?.[0]?.content?.parts?.find(
       (part: { text?: string }) => part.text
     );
@@ -267,7 +280,6 @@ async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): P
     throw new Error('No image returned from Gemini');
   }
   
-  // Return as data URL (Gemini returns base64)
   const imageUrl = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
   
   return { imageUrl };
@@ -282,7 +294,7 @@ function sanitizeInput(input: string, maxLength: number = 500): string {
 }
 
 export async function POST(request: NextRequest) {
-  // Rate limiting - images are expensive, strict limit
+  // Rate limiting
   const clientId = getClientIdentifier(request);
   const rateLimitResult = checkRateLimit(`image:${clientId}`, RATE_LIMITS.image);
   
@@ -292,7 +304,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json() as ImageGenerationRequest;
-    const { type, prompt: rawPrompt, characterName, characterBackground, sceneDescription } = body;
+    const { 
+      type, 
+      prompt: rawPrompt, 
+      characterName, 
+      characterBackground, 
+      appearance,
+      artStyle,
+      sceneDescription,
+      locationName,
+      timeOfDay,
+      mood
+    } = body;
 
     if (!type || !['portrait', 'scene'].includes(type)) {
       return NextResponse.json(
@@ -305,7 +328,9 @@ export async function POST(request: NextRequest) {
     const sanitizedPrompt = rawPrompt ? sanitizeInput(rawPrompt, 200) : undefined;
     const sanitizedName = characterName ? sanitizeInput(characterName, 50) : undefined;
     const sanitizedBackground = characterBackground ? sanitizeInput(characterBackground, 50) : undefined;
+    const sanitizedAppearance = appearance ? sanitizeInput(appearance, 500) : undefined;
     const sanitizedSceneDesc = sceneDescription ? sanitizeInput(sceneDescription, 500) : undefined;
+    const sanitizedLocation = locationName ? sanitizeInput(locationName, 100) : undefined;
 
     // Build optimized prompt based on type
     let finalPrompt: string;
@@ -317,27 +342,33 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      finalPrompt = buildPortraitPrompt(sanitizedName, sanitizedBackground, sanitizedPrompt);
+      finalPrompt = buildPortraitPrompt(
+        sanitizedName, 
+        sanitizedBackground, 
+        sanitizedAppearance,
+        artStyle,
+        sanitizedPrompt
+      );
     } else {
-      if (!sanitizedSceneDesc) {
+      if (!sanitizedSceneDesc && !sanitizedLocation) {
         return NextResponse.json(
-          { error: 'Scene requires sceneDescription' },
+          { error: 'Scene requires sceneDescription or locationName' },
           { status: 400 }
         );
       }
-      // Parse scene details from sceneDescription
-      const parts = sanitizedSceneDesc.split('|').map(s => s.trim());
-      const locationName = parts[0] || 'Post-apocalyptic location';
-      const description = parts[1] || sanitizedSceneDesc;
-      const timeOfDay = parts[2] || 'day';
-      const mood = parts[3] || 'tense';
       
-      finalPrompt = buildScenePrompt(locationName, description, timeOfDay, mood);
+      finalPrompt = buildScenePrompt(
+        sanitizedLocation || 'Post-apocalyptic location',
+        sanitizedSceneDesc || 'abandoned and desolate',
+        timeOfDay,
+        mood,
+        artStyle
+      );
     }
 
-    console.log(`Generating ${type} image with prompt:`, finalPrompt.substring(0, 100) + '...');
+    console.log(`Generating ${type} image with prompt:`, finalPrompt.substring(0, 150) + '...');
 
-    // Try OpenAI first, then Gemini, then Replicate
+    // Try providers in order
     let result: ImageGenerationResponse;
     
     if (process.env.OPENAI_API_KEY) {
@@ -353,20 +384,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Return result with rate limit headers and cache headers
     const rateLimitHeaders = createRateLimitHeaders(rateLimitResult, RATE_LIMITS.image);
     const response = NextResponse.json(result);
     
     Object.entries(rateLimitHeaders).forEach(([key, value]) => {
       response.headers.set(key, value);
     });
-    // Cache generated images for 1 hour
     response.headers.set('Cache-Control', 'public, max-age=3600');
     
     return response;
   } catch (error) {
     console.error('Image generation error:', error);
-    // Don't expose internal error details
     return NextResponse.json(
       { 
         error: 'Failed to generate image',

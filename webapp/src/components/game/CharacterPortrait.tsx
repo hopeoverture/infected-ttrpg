@@ -2,11 +2,14 @@
 
 import { useState, useCallback } from 'react';
 import Image from 'next/image';
+import { CharacterAppearance, ArtStyle, DEFAULT_APPEARANCE } from '@/lib/types';
 
 interface CharacterPortraitProps {
   portraitUrl?: string | null;
   characterName: string;
   characterBackground: string;
+  appearance?: CharacterAppearance;
+  artStyle?: ArtStyle;
   size?: 'small' | 'medium' | 'large';
   editable?: boolean;
   onPortraitChange?: (url: string) => void;
@@ -24,10 +27,65 @@ const SIZE_PIXELS = {
   large: 160
 };
 
+// Build a detailed appearance prompt from the appearance options
+function buildAppearancePrompt(appearance: CharacterAppearance): string {
+  const parts: string[] = [];
+
+  // Age and gender
+  const ageMap: Record<string, string> = {
+    'young': 'young adult in their early 20s',
+    'adult': 'adult in their 30s',
+    'middle-aged': 'middle-aged person in their 40s-50s',
+    'older': 'older person in their 60s+'
+  };
+  parts.push(ageMap[appearance.age] || 'adult');
+
+  // Gender presentation
+  const genderMap: Record<string, string> = {
+    'male': 'man',
+    'female': 'woman',
+    'androgynous': 'androgynous person'
+  };
+  parts.push(genderMap[appearance.gender] || 'person');
+
+  // Build
+  const buildMap: Record<string, string> = {
+    'slight': 'slim and wiry build',
+    'average': 'average build',
+    'athletic': 'athletic muscular build',
+    'heavy': 'large heavy build'
+  };
+  parts.push(buildMap[appearance.bodyType] || 'average build');
+
+  // Skin tone
+  parts.push(`${appearance.skinTone} skin tone`);
+
+  // Hair
+  if (appearance.hairStyle.toLowerCase() === 'bald') {
+    parts.push('bald head');
+  } else {
+    parts.push(`${appearance.hairColor} ${appearance.hairStyle.toLowerCase()} hair`);
+  }
+
+  // Facial hair (if applicable)
+  if (appearance.facialHair && appearance.facialHair !== 'None') {
+    parts.push(`${appearance.facialHair.toLowerCase()}`);
+  }
+
+  // Distinguishing features
+  if (appearance.distinguishingFeatures.length > 0) {
+    parts.push(appearance.distinguishingFeatures.join(', ').toLowerCase());
+  }
+
+  return parts.join(', ');
+}
+
 export default function CharacterPortrait({
   portraitUrl,
   characterName,
   characterBackground,
+  appearance = DEFAULT_APPEARANCE,
+  artStyle = 'cinematic',
   size = 'medium',
   editable = false,
   onPortraitChange
@@ -43,6 +101,9 @@ export default function CharacterPortrait({
     setError(null);
 
     try {
+      // Build detailed appearance description
+      const appearanceDescription = buildAppearancePrompt(appearance);
+      
       const response = await fetch('/api/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -50,7 +111,9 @@ export default function CharacterPortrait({
           type: 'portrait',
           characterName,
           characterBackground,
-          prompt: 'determined expression, survivor of the apocalypse'
+          appearance: appearanceDescription,
+          artStyle,
+          prompt: 'determined expression, survivor of the apocalypse, intense gaze'
         })
       });
 
@@ -68,8 +131,9 @@ export default function CharacterPortrait({
     } finally {
       setIsGenerating(false);
     }
-  }, [characterName, characterBackground, isGenerating, onPortraitChange]);
+  }, [characterName, characterBackground, appearance, artStyle, isGenerating, onPortraitChange]);
 
+  // Sync with external portraitUrl prop
   const displayUrl = localPortraitUrl || portraitUrl;
   const sizeClass = SIZE_CLASSES[size];
   const sizePixels = SIZE_PIXELS[size];
