@@ -503,3 +503,98 @@ body {
   pointer-events: none;
   z-index: 1;
 }
+
+/* Subtitle/Caption Styles */
+.subtitle-container {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+  pointer-events: none;
+  transition: opacity 0.5s ease-out;
+}
+
+.subtitle-container.bottom {
+  bottom: 5rem;
+}
+
+.subtitle-container.top {
+  top: 5rem;
+}
+
+.subtitle-container.fading {
+  opacity: 0;
+}
+
+.subtitle-container.playing {
+  opacity: 1;
+}
+
+.subtitle-box {
+  position: relative;
+  max-width: 48rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  text-align: center;
+}
+
+.subtitle-cinematic {
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(201, 162, 39, 0.3);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+}
+
+.subtitle-minimal {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.subtitle-typewriter {
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: monospace;
+}
+
+.subtitle-glow {
+  position: absolute;
+  inset: -1px;
+  background: radial-gradient(ellipse at center, rgba(201, 162, 39, 0.1) 0%, transparent 70%);
+  border-radius: 0.5rem;
+  pointer-events: none;
+}
+
+.subtitle-text {
+  position: relative;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: #f5f5f5;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.subtitle-indicator {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.subtitle-loading {
+  background: rgba(0, 0, 0, 0.7);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+  .subtitle-text {
+    font-size: 1rem;
+  }
+  .subtitle-container.bottom {
+    bottom: 6rem;
+  }
+  .subtitle-box {
+    margin: 0 0.5rem;
+    padding: 0.5rem 1rem;
+  }
+}

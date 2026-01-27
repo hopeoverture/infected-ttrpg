@@ -11,6 +11,7 @@ import GameStatePanel from '@/components/game/GameStatePanel';
 import DiceRoll from '@/components/game/DiceRoll';
 import SceneImage from '@/components/game/SceneImage';
 import AudioNarration, { MuteToggle } from '@/components/game/AudioNarration';
+import SubtitleDisplay from '@/components/game/SubtitleDisplay';
 import { GameErrorBoundary } from '@/components/ErrorBoundary';
 import QuickActions, { QuickActionsRef } from '@/components/game/QuickActions';
 import CombatTracker from '@/components/game/CombatTracker';
@@ -55,6 +56,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   const [currentSceneDescription, setCurrentSceneDescription] = useState<string | null>(null);
   const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null);
   const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
+  const [currentNarrationText, setCurrentNarrationText] = useState<string | null>(null);
   
   // Modal State
   const [breakingPointOpen, setBreakingPointOpen] = useState(false);
@@ -295,7 +297,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [gameState?.messages]);
 
-  // Auto-play new GM messages
+  // Auto-play new GM messages and update subtitle text
   useEffect(() => {
     if (!gameState?.messages?.length || isMuted) return;
     
@@ -307,9 +309,26 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
       lastMessage.id !== lastGMMessageIdRef.current
     ) {
       lastGMMessageIdRef.current = lastMessage.id;
+      setCurrentNarrationText(lastMessage.content); // eslint-disable-line react-hooks/set-state-in-effect
       playAudio(lastMessage.content, lastMessage.id);
     }
   }, [gameState?.messages, isMuted, playAudio]);
+
+  // Update subtitle text based on current audio state
+  // This is intentional state synchronization from audio state changes
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (audioState.currentMessageId && gameState?.messages) {
+      const currentMsg = gameState.messages.find(m => m.id === audioState.currentMessageId);
+      if (currentMsg) {
+        setCurrentNarrationText(currentMsg.content);
+      }
+    } else if (!audioState.isPlaying && !audioState.isLoading) {
+      // Clear narration text when audio stops
+      setCurrentNarrationText(null);
+    }
+  }, [audioState.currentMessageId, audioState.isPlaying, audioState.isLoading, gameState?.messages]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Handle scene image generation
   const handleSceneImageGenerated = useCallback((url: string) => {
@@ -702,6 +721,17 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
             )}
           </div>
         </div>
+      )}
+      
+      {/* Subtitles/Captions for Audio Narration */}
+      {settings.showSubtitles !== false && (
+        <SubtitleDisplay
+          text={currentNarrationText}
+          isPlaying={audioState.isPlaying}
+          isLoading={audioState.isLoading}
+          position="bottom"
+          style={settings.subtitleStyle || 'cinematic'}
+        />
       )}
       
       {/* Mobile Navigation */}

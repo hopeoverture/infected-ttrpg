@@ -6,6 +6,8 @@ export interface GameSettings {
   aiProvider: 'anthropic' | 'openai' | 'google';
   ttsEnabled: boolean;
   ttsVoice: string;
+  showSubtitles: boolean;
+  subtitleStyle: 'cinematic' | 'minimal' | 'typewriter';
   autoGenerateImages: boolean;
   soundEffectsEnabled: boolean;
   soundVolume: number;
@@ -16,6 +18,8 @@ const DEFAULT_SETTINGS: GameSettings = {
   aiProvider: 'anthropic',
   ttsEnabled: false,
   ttsVoice: 'alloy',
+  showSubtitles: true,
+  subtitleStyle: 'cinematic',
   autoGenerateImages: true,
   soundEffectsEnabled: true,
   soundVolume: 0.7,
@@ -173,6 +177,62 @@ export default function SettingsPanel({
                 ))}
               </select>
             )}
+
+            {/* Subtitles */}
+            <div className="mt-4 pt-4 border-t border-subtle">
+              <label className="flex items-center justify-between mb-3">
+                <div>
+                  <div>Show Subtitles</div>
+                  <div className="text-xs text-muted">Display narration text on screen</div>
+                </div>
+                <button
+                  onClick={() => updateSetting('showSubtitles', !localSettings.showSubtitles)}
+                  className={`w-12 h-6 rounded-full transition-colors ${
+                    localSettings.showSubtitles ? 'bg-gold' : 'bg-card'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                    localSettings.showSubtitles ? 'translate-x-6' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </label>
+
+              {localSettings.showSubtitles && (
+                <div className="space-y-2">
+                  <div className="text-sm text-muted mb-2">Subtitle Style</div>
+                  {[
+                    { id: 'cinematic', name: 'Cinematic', desc: 'Elegant with gold accents' },
+                    { id: 'minimal', name: 'Minimal', desc: 'Simple dark background' },
+                    { id: 'typewriter', name: 'Typewriter', desc: 'Text reveals progressively' }
+                  ].map(style => (
+                    <label
+                      key={style.id}
+                      className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-all ${
+                        localSettings.subtitleStyle === style.id
+                          ? 'border-gold bg-gold/10'
+                          : 'border-subtle hover:border-medium'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="subtitleStyle"
+                        value={style.id}
+                        checked={localSettings.subtitleStyle === style.id}
+                        onChange={() => updateSetting('subtitleStyle', style.id as GameSettings['subtitleStyle'])}
+                        className="sr-only"
+                      />
+                      <div className={`w-3 h-3 rounded-full border-2 ${
+                        localSettings.subtitleStyle === style.id ? 'border-gold bg-gold' : 'border-muted'
+                      }`} />
+                      <div>
+                        <div className="text-sm font-medium">{style.name}</div>
+                        <div className="text-xs text-muted">{style.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
 
           {/* Images */}
