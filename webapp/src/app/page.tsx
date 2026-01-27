@@ -235,7 +235,23 @@ export default function Dashboard() {
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-muted">Loading...</div>
+          <div className="py-8" role="status" aria-live="polite">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {/* Skeleton cards */}
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="game-card animate-pulse">
+                  <div className="h-32 bg-surface-elevated" />
+                  <div className="p-4 space-y-3">
+                    <div className="h-5 bg-surface-elevated rounded w-3/4" />
+                    <div className="h-4 bg-surface-elevated rounded w-1/2" />
+                    <div className="h-3 bg-surface-elevated rounded w-1/3" />
+                    <div className="h-2 bg-surface-elevated rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-center text-muted mt-4">Loading your games...</p>
+          </div>
         ) : (
           <>
             {/* Active Games */}

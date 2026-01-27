@@ -1,153 +1,333 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, use, useCallback } from 'react';
 import Link from 'next/link';
+// import { useRouter } from 'next/navigation';
 import { 
   GameState, 
   Message, 
-  BACKGROUNDS,
-  RollResult
+  RollResult,
+  ThreatState,
+  TimeOfDay,
+  LightLevel,
+  Scarcity
 } from '@/lib/types';
-import { rollDicePool, formatRollResult } from '@/lib/game-engine/dice';
+import { getGame, updateGame, addMessage } from '@/lib/supabase/games';
 
 // Components
 import CharacterPanel from '@/components/game/CharacterPanel';
 import GameStatePanel from '@/components/game/GameStatePanel';
 import DiceRoll from '@/components/game/DiceRoll';
+import SceneImage from '@/components/game/SceneImage';
+import AudioNarration, { MuteToggle } from '@/components/game/AudioNarration';
+import { GameErrorBoundary } from '@/components/ErrorBoundary';
 
-// Mock initial game state - replace with actual loading
-const createMockGameState = (): GameState => ({
-  id: '1',
-  title: 'The Long Road',
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  character: {
-    id: 'char-1',
-    name: 'Marcus Chen',
-    background: 'soldier',
-    motivation: 'Find my sister',
-    attributes: { grit: 3, reflex: 3, wits: 3, nerve: 3 },
-    skills: {
-      brawl: 2, endure: 1, athletics: 1,
-      shoot: 3, stealth: 1, drive: 0,
-      notice: 1, craft: 0, tech: 0, medicine: 0, survival: 0, knowledge: 0,
-      persuade: 1, deceive: 0, resolve: 1, intimidate: 0, animals: 0
-    },
-    wounds: { bruised: 0, bleeding: 1, broken: 0, critical: false },
-    woundCapacity: { bruised: 5, bleeding: 3, broken: 2, critical: 1 },
-    stress: 0,
-    maxStress: 6,
-    guts: 3,
-    gutsEarnedThisSession: 0,
-    inventory: [
-      { id: '1', name: 'Med kit', quantity: 2, isSignificant: true },
-      { id: '2', name: 'Radio', quantity: 1, isSignificant: true },
-      { id: '3', name: 'Flashlight', quantity: 1, isSignificant: true },
-    ],
-    weapons: [
-      { 
-        id: 'w1', 
-        name: 'Pistol', 
-        damage: 3, 
-        range: 'Close/Med', 
-        noise: 5, 
-        properties: ['One-Handed', 'Loud'],
-        durability: 5,
-        maxDurability: 5,
-        ammo: 12,
-        maxAmmo: 15
-      },
-      {
-        id: 'w2',
-        name: 'Combat Knife',
-        damage: 2,
-        range: 'Melee',
-        noise: 1,
-        properties: ['Fast', 'Quiet'],
-        durability: 4,
-        maxDurability: 4
-      }
-    ],
-    armor: {
-      name: 'Light Armor',
-      reduction: 2,
-      stealthPenalty: 1,
-      durability: 4,
-      maxDurability: 4
-    },
-    carryingCapacity: 7,
-    food: 2,
-    water: 1
-  },
-  day: 14,
-  time: 'night',
-  location: {
-    name: 'Riverside Pharmacy',
-    description: 'A ransacked drugstore on the outskirts of town',
-    lightLevel: 'dim',
-    scarcity: 'sparse',
-    ambientThreat: 3,
-    searched: false
-  },
-  threat: 7,
-  threatState: 'investigating',
-  party: [
-    { id: 'npc1', name: 'Elena', relationship: 'trusted', status: 'Sick - needs antibiotics', isAlive: true }
-  ],
-  objectives: [
-    { id: 'obj1', text: 'Find antibiotics for Elena', completed: false },
-    { id: 'obj2', text: 'Return to the safehouse', completed: false },
-    { id: 'obj3', text: 'Reach the pharmacy', completed: true }
-  ],
-  messages: [
-    {
-      id: 'msg1',
-      role: 'gm',
-      content: `The pharmacy's back door hangs open, creaking in the wind. Through the gap you can see overturned shelves and scattered pills. The smell hits you — antiseptic and something worse.
+// Hooks
+import { useAudioNarration } from '@/hooks/useAudioNarration';
 
-Elena grips your arm. "Medicine's in the back," she whispers. "But that smell..."
+// Types for GM API responses
+interface GMStateChanges {
+  threat?: number | null;
+  threatState?: ThreatState | null;
+  stress?: number | null;
+  wounds?: { type: 'bruised' | 'bleeding' | 'broken' | 'critical'; change: number } | null;
+  guts?: number | null;
+  location?: {
+    name: string;
+    description: string;
+    lightLevel: LightLevel;
+    scarcity: Scarcity;
+    ambientThreat: number;
+  } | null;
+  time?: TimeOfDay | null;
+  day?: number | null;
+  inventory?: { add?: string[]; remove?: string[] } | null;
+  objectives?: { add?: string[]; complete?: string[] } | null;
+}
 
-From somewhere inside, glass shatters.
-
-**What do you do?**`,
-      timestamp: new Date()
-    }
-  ],
-  combatState: null,
-  sessionStartTime: new Date(),
-  rollCount: 0,
-  killCount: 0
-});
+interface GMApiResponse {
+  narrative: string;
+  stateChanges: GMStateChanges;
+  roll: {
+    type: string;
+    attribute: string;
+    skill: string;
+    modifier?: number;
+    reason?: string;
+    result?: RollResult;
+    description?: string;
+  } | null;
+  combatStarted?: boolean;
+  infectionCheck?: boolean;
+  breakingPoint?: boolean;
+  sceneChanged?: boolean;
+  sceneDescription?: string | null;
+  error?: string;
+  details?: string;
+}
 
 const QUICK_ACTIONS = [
-  { icon: '🔍', label: 'Search', action: 'I want to search the area carefully.' },
-  { icon: '👂', label: 'Listen', action: 'I stop and listen carefully for any sounds.' },
-  { icon: '🤫', label: 'Sneak', action: 'I try to move quietly and stay hidden.' },
-  { icon: '⚔️', label: 'Attack', action: 'I attack!' },
-  { icon: '🗣️', label: 'Talk', action: 'I try to communicate.' },
-  { icon: '🏃', label: 'Run', action: 'I run!' },
+  { icon: '🔍', label: 'Search', action: 'I want to search the area carefully.', ariaLabel: 'Search the area' },
+  { icon: '👂', label: 'Listen', action: 'I stop and listen carefully for any sounds.', ariaLabel: 'Listen for sounds' },
+  { icon: '🤫', label: 'Sneak', action: 'I try to move quietly and stay hidden.', ariaLabel: 'Move quietly' },
+  { icon: '⚔️', label: 'Attack', action: 'I attack!', ariaLabel: 'Attack' },
+  { icon: '🗣️', label: 'Talk', action: 'I try to communicate.', ariaLabel: 'Try to communicate' },
+  { icon: '🏃', label: 'Run', action: 'I run!', ariaLabel: 'Run away' },
 ];
 
 export default function GameSession({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [currentRoll, setCurrentRoll] = useState<RollResult | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [currentSceneDescription, setCurrentSceneDescription] = useState<string | null>(null);
+  const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const gameIdRef = useRef<string>(resolvedParams.id);
+  const lastGMMessageIdRef = useRef<string | null>(null);
+  
+  // Audio narration hook
+  const {
+    isMuted,
+    toggleMute,
+    audioState,
+    playAudio,
+    stopAudio,
+    togglePlayback,
+  } = useAudioNarration();
 
+  // Load game from Supabase
   useEffect(() => {
-    // TODO: Load actual game state
-    setGameState(createMockGameState());
+    async function loadGame() {
+      try {
+        const game = await getGame(gameIdRef.current);
+        if (!game) {
+          setLoadError('Game not found');
+          return;
+        }
+        setGameState(game);
+      } catch (err) {
+        console.error('Failed to load game:', err);
+        setLoadError(err instanceof Error ? err.message : 'Failed to load game');
+      }
+    }
+    loadGame();
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [gameState?.messages]);
 
+  // Auto-play new GM messages
+  useEffect(() => {
+    if (!gameState?.messages?.length || isMuted) return;
+    
+    const lastMessage = gameState.messages[gameState.messages.length - 1];
+    
+    // Only auto-play GM messages that we haven't played yet
+    if (
+      lastMessage &&
+      lastMessage.role === 'gm' && 
+      lastMessage.id !== lastGMMessageIdRef.current
+    ) {
+      lastGMMessageIdRef.current = lastMessage.id;
+      playAudio(lastMessage.content, lastMessage.id);
+    }
+  }, [gameState?.messages, isMuted, playAudio]);
+
+  // Save game state to Supabase
+  const saveGameState = useCallback(async (updates: Partial<GameState>) => {
+    try {
+      await updateGame(gameIdRef.current, updates);
+    } catch (err) {
+      console.error('Failed to save game state:', err);
+    }
+  }, []);
+
+  // Handle scene image generation completion
+  const handleSceneImageGenerated = useCallback((url: string) => {
+    setSceneImageUrl(url);
+    // Cache the scene image URL in game state
+    if (gameState) {
+      const updatedLocation = {
+        ...gameState.location,
+        sceneImageUrl: url
+      };
+      setGameState(prev => prev ? {
+        ...prev,
+        location: updatedLocation
+      } : null);
+      saveGameState({ location: updatedLocation });
+    }
+  }, [gameState, saveGameState]);
+
+  // Apply state changes from GM response
+  const applyStateChanges = useCallback((changes: GMStateChanges, currentState: GameState): Partial<GameState> => {
+    const updates: Partial<GameState> = {};
+
+    if (changes.threat !== null && changes.threat !== undefined) {
+      updates.threat = Math.max(0, Math.min(10, changes.threat));
+    }
+
+    if (changes.threatState) {
+      updates.threatState = changes.threatState;
+    }
+
+    if (changes.stress !== null && changes.stress !== undefined) {
+      updates.character = {
+        ...currentState.character,
+        stress: Math.max(0, Math.min(currentState.character.maxStress, changes.stress))
+      };
+    }
+
+    if (changes.wounds) {
+      const woundType = changes.wounds.type;
+      const change = changes.wounds.change;
+      updates.character = {
+        ...(updates.character || currentState.character),
+        wounds: {
+          ...currentState.character.wounds,
+          [woundType]: woundType === 'critical' 
+            ? change > 0 
+            : Math.max(0, currentState.character.wounds[woundType] + change)
+        }
+      };
+    }
+
+    if (changes.guts !== null && changes.guts !== undefined) {
+      updates.character = {
+        ...(updates.character || currentState.character),
+        guts: Math.max(0, Math.min(5, currentState.character.guts + changes.guts))
+      };
+    }
+
+    if (changes.location) {
+      updates.location = {
+        ...currentState.location,
+        ...changes.location,
+        searched: false,
+        sceneImageUrl: undefined // Clear on location change
+      };
+    }
+
+    if (changes.time) {
+      updates.time = changes.time;
+    }
+
+    if (changes.day !== null && changes.day !== undefined) {
+      updates.day = changes.day;
+    }
+
+    if (changes.inventory) {
+      const currentInventory = [...currentState.character.inventory];
+      
+      // Add items
+      if (changes.inventory.add) {
+        for (const itemName of changes.inventory.add) {
+          const existing = currentInventory.find(i => i.name.toLowerCase() === itemName.toLowerCase());
+          if (existing) {
+            existing.quantity += 1;
+          } else {
+            currentInventory.push({
+              id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              name: itemName,
+              quantity: 1,
+              isSignificant: true
+            });
+          }
+        }
+      }
+      
+      // Remove items
+      if (changes.inventory.remove) {
+        for (const itemName of changes.inventory.remove) {
+          const idx = currentInventory.findIndex(i => i.name.toLowerCase() === itemName.toLowerCase());
+          const item = currentInventory[idx];
+          if (idx !== -1 && item) {
+            item.quantity -= 1;
+            if (item.quantity <= 0) {
+              currentInventory.splice(idx, 1);
+            }
+          }
+        }
+      }
+
+      updates.character = {
+        ...(updates.character || currentState.character),
+        inventory: currentInventory
+      };
+    }
+
+    if (changes.objectives) {
+      const currentObjectives = [...currentState.objectives];
+      
+      // Add objectives
+      if (changes.objectives.add) {
+        for (const objText of changes.objectives.add) {
+          if (!currentObjectives.some(o => o.text.toLowerCase() === objText.toLowerCase())) {
+            currentObjectives.push({
+              id: `obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              text: objText,
+              completed: false
+            });
+          }
+        }
+      }
+      
+      // Complete objectives
+      if (changes.objectives.complete) {
+        for (const objText of changes.objectives.complete) {
+          const obj = currentObjectives.find(o => 
+            o.text.toLowerCase().includes(objText.toLowerCase()) ||
+            objText.toLowerCase().includes(o.text.toLowerCase())
+          );
+          if (obj) {
+            obj.completed = true;
+          }
+        }
+      }
+
+      updates.objectives = currentObjectives;
+    }
+
+    return updates;
+  }, []);
+
+  // Call the GM API
+  const callGM = useCallback(async (action: string, rollResult?: RollResult): Promise<GMApiResponse> => {
+    const response = await fetch('/api/gm', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action,
+        gameState,
+        rollResult,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API error: ${response.status}`);
+    }
+
+    return response.json();
+  }, [gameState]);
+
   const handleSubmit = async (action: string) => {
     if (!action.trim() || !gameState || isLoading) return;
 
-    // Add player message
+    // Stop any current narration when player takes action
+    stopAudio();
+    
+    setInput('');
+    setIsLoading(true);
+    setAiError(null);
+
+    // Add player message optimistically
     const playerMessage: Message = {
       id: `msg-${Date.now()}`,
       role: 'player',
@@ -160,99 +340,176 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
       messages: [...prev.messages, playerMessage]
     } : null);
 
-    setInput('');
-    setIsLoading(true);
+    // Save player message to database
+    try {
+      await addMessage(gameIdRef.current, 'player', action);
+    } catch (err) {
+      console.error('Failed to save player message:', err);
+    }
 
-    // Simulate AI response (replace with actual AI call)
-    setTimeout(() => {
-      // Example: If action mentions sneaking, do a stealth roll
-      if (action.toLowerCase().includes('sneak') || action.toLowerCase().includes('quiet')) {
-        const rollResult = rollDicePool(gameState.character.attributes.reflex + gameState.character.skills.stealth + 1); // +1 for dim light
-        setCurrentRoll(rollResult);
+    try {
+      // Call the AI GM
+      const gmResponse = await callGM(action);
 
-        const gmResponse: Message = {
-          id: `msg-${Date.now() + 1}`,
-          role: 'gm',
-          content: rollResult.totalHits >= 2 
-            ? `You press yourself against the wall and edge toward the back of the pharmacy. Your footsteps are silent on the debris-covered floor.
-
-Through the shadows, you spot it — a single infected, hunched over something near the pharmacy counter. It hasn't noticed you.
-
-The controlled substances cabinet is just past it. So are the antibiotics Elena needs.
-
-**The infected is 10 feet away. Unaware. What's your move?**`
-            : `You try to move quietly, but your boot crunches on broken glass. The sound seems impossibly loud in the silence.
-
-From the back of the pharmacy, you hear movement. Something is coming to investigate.
-
-**+2 Threat. You have seconds to decide — hide, run, or prepare to fight.**`,
-          timestamp: new Date(),
-          roll: rollResult
-        };
-
-        setGameState(prev => prev ? {
-          ...prev,
-          messages: [...prev.messages, gmResponse],
-          threat: rollResult.totalHits >= 2 ? prev.threat : Math.min(10, prev.threat + 2),
-          rollCount: prev.rollCount + 1
-        } : null);
-      } else {
-        // Generic response
-        const gmResponse: Message = {
-          id: `msg-${Date.now() + 1}`,
-          role: 'gm',
-          content: `*The AI GM would respond here based on your action.*
-
-For now, this is a placeholder. The full implementation would:
-1. Parse your action
-2. Determine if a roll is needed
-3. Apply game rules
-4. Generate atmospheric narrative
-5. Update game state
-
-**What do you do next?**`,
-          timestamp: new Date()
-        };
-
-        setGameState(prev => prev ? {
-          ...prev,
-          messages: [...prev.messages, gmResponse]
-        } : null);
+      if (gmResponse.error) {
+        throw new Error(gmResponse.error);
       }
 
+      // Apply state changes
+      const stateUpdates = applyStateChanges(gmResponse.stateChanges, gameState);
+
+      // Handle scene changes for image generation
+      if (gmResponse.sceneChanged && gmResponse.sceneDescription) {
+        setCurrentSceneDescription(gmResponse.sceneDescription);
+        setSceneImageUrl(null); // Clear cached image to trigger regeneration
+      }
+
+      // Create GM message
+      const gmMessage: Message = {
+        id: `msg-${Date.now() + 1}`,
+        role: 'gm',
+        content: gmResponse.narrative,
+        timestamp: new Date(),
+        roll: gmResponse.roll?.result
+      };
+
+      // Calculate new roll count
+      const newRollCount = gmResponse.roll?.result 
+        ? gameState.rollCount + 1 
+        : gameState.rollCount;
+
+      // Update local state
+      setGameState(prev => prev ? {
+        ...prev,
+        ...stateUpdates,
+        messages: [...prev.messages, gmMessage],
+        rollCount: newRollCount,
+        character: stateUpdates.character || prev.character,
+        objectives: stateUpdates.objectives || prev.objectives,
+      } : null);
+
+      // Save to database
+      try {
+        await addMessage(gameIdRef.current, 'gm', gmResponse.narrative, gmResponse.roll?.result);
+        await saveGameState({
+          ...stateUpdates,
+          rollCount: newRollCount
+        });
+      } catch (err) {
+        console.error('Failed to save GM response:', err);
+      }
+
+    } catch (err) {
+      console.error('GM API error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to get GM response';
+      setAiError(errorMessage);
+      
+      // Add error message to chat
+      const errorMsg: Message = {
+        id: `msg-${Date.now() + 1}`,
+        role: 'system',
+        content: `**Error:** ${errorMessage}\n\n*The GM is having trouble responding. Check that your API keys are configured in .env.local*`,
+        timestamp: new Date()
+      };
+
+      setGameState(prev => prev ? {
+        ...prev,
+        messages: [...prev.messages, errorMsg]
+      } : null);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
-  if (!gameState) {
+  // Loading state with skeleton
+  if (!gameState && !loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center" role="status" aria-live="polite">
+        <div className="text-center">
+          <div className="text-4xl mb-4 animate-pulse" aria-hidden="true">🏚️</div>
+          <div className="text-muted">Loading game...</div>
+          {/* Skeleton preview */}
+          <div className="mt-8 w-80 space-y-3">
+            <div className="h-4 bg-surface-elevated rounded animate-pulse" />
+            <div className="h-4 bg-surface-elevated rounded animate-pulse w-3/4" />
+            <div className="h-4 bg-surface-elevated rounded animate-pulse w-1/2" />
+          </div>
+        </div>
       </div>
     );
   }
 
+  // Error state
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h2 className="text-xl font-semibold mb-2">Failed to Load Game</h2>
+          <p className="text-muted mb-6">{loadError}</p>
+          <Link href="/" className="btn btn-primary">
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!gameState) {
+    return null;
+  }
+
   return (
+    <GameErrorBoundary>
     <div className="h-screen flex flex-col">
       {/* Header */}
       <header className="border-b border-subtle flex-shrink-0">
         <div className="px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="text-secondary hover:text-primary transition-colors">
+          <Link 
+            href="/" 
+            className="text-secondary hover:text-primary transition-colors"
+            aria-label="Return to dashboard"
+          >
             ← Dashboard
           </Link>
           <h1 className="font-semibold">
             {gameState.title} — Day {gameState.day}
           </h1>
           <div className="flex items-center gap-3">
-            <button className="text-secondary hover:text-primary transition-colors text-sm">
+            <MuteToggle isMuted={isMuted} onToggle={toggleMute} />
+            <button 
+              className="text-secondary hover:text-primary transition-colors text-sm"
+              aria-label="Open game settings"
+            >
               ⚙ Settings
             </button>
-            <button className="text-secondary hover:text-primary transition-colors text-sm">
+            <button 
+              className="text-secondary hover:text-primary transition-colors text-sm"
+              aria-label="View game rules"
+            >
               📖 Rules
             </button>
           </div>
         </div>
       </header>
+
+      {/* AI Error Banner */}
+      {aiError && (
+        <div 
+          className="bg-red-900/30 border-b border-red-700 px-4 py-2 text-sm text-red-200 flex items-center justify-between"
+          role="alert"
+          aria-live="assertive"
+        >
+          <span>⚠️ GM Error: {aiError}</span>
+          <button 
+            onClick={() => setAiError(null)}
+            className="text-red-200 hover:text-white"
+            aria-label="Dismiss error message"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Main Content - Three Column Layout */}
       <div className="flex-1 flex overflow-hidden">
@@ -263,6 +520,21 @@ For now, this is a placeholder. The full implementation would:
 
         {/* Center Panel - Narrative */}
         <div className="flex-1 flex flex-col min-w-0">
+          {/* Scene Image */}
+          {gameState.location && (
+            <div className="p-4 pb-0">
+              <SceneImage
+                sceneDescription={currentSceneDescription}
+                locationName={gameState.location.name}
+                timeOfDay={gameState.time}
+                mood={gameState.threatState === 'safe' ? 'safe' : gameState.threatState === 'encounter' || gameState.threatState === 'swarm' ? 'dangerous' : 'tense'}
+                cachedImageUrl={sceneImageUrl || gameState.location.sceneImageUrl}
+                onImageGenerated={handleSceneImageGenerated}
+                autoGenerate={!!currentSceneDescription}
+              />
+            </div>
+          )}
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {gameState.messages.map((message) => (
@@ -288,13 +560,34 @@ For now, this is a placeholder. The full implementation would:
                       <DiceRoll result={message.roll} />
                     </div>
                   )}
+                  
+                  {/* Audio narration controls for GM messages */}
+                  {message.role === 'gm' && (
+                    <div className="mt-3 pt-2 border-t border-subtle">
+                      <AudioNarration
+                        messageId={message.id}
+                        text={message.content}
+                        isGM={true}
+                        isMuted={isMuted}
+                        isPlaying={audioState.isPlaying && audioState.currentMessageId === message.id}
+                        isLoading={audioState.isLoading && audioState.currentMessageId === message.id}
+                        isCurrentMessage={audioState.currentMessageId === message.id}
+                        onTogglePlay={togglePlayback}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
             
             {isLoading && (
               <div className="message message-gm animate-pulse">
-                <div className="text-muted">The GM is thinking...</div>
+                <div className="flex items-center gap-2 text-muted">
+                  <span className="inline-block w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                  <span className="inline-block w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                  <span className="inline-block w-2 h-2 bg-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  <span className="ml-2">The GM is thinking...</span>
+                </div>
               </div>
             )}
             
@@ -317,6 +610,7 @@ For now, this is a placeholder. The full implementation would:
                   type="submit" 
                   disabled={isLoading || !input.trim()}
                   className="btn btn-primary disabled:opacity-50"
+                  aria-label="Submit action"
                 >
                   ➤
                 </button>
@@ -324,15 +618,16 @@ For now, this is a placeholder. The full implementation would:
             </form>
 
             {/* Quick Actions */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Quick actions">
               {QUICK_ACTIONS.map((qa) => (
                 <button
                   key={qa.label}
                   onClick={() => handleSubmit(qa.action)}
                   disabled={isLoading}
                   className="quick-action disabled:opacity-50"
+                  aria-label={qa.ariaLabel}
                 >
-                  <span>{qa.icon}</span>
+                  <span aria-hidden="true">{qa.icon}</span>
                   <span>{qa.label}</span>
                 </button>
               ))}
@@ -352,5 +647,6 @@ For now, this is a placeholder. The full implementation would:
         </div>
       </div>
     </div>
+    </GameErrorBoundary>
   );
 }

@@ -1,7 +1,7 @@
 // Game database operations
 
 import { createClient } from './client';
-import { Database, GameRow, GameSummaryRow, MessageRow } from './types';
+import { GameRow, GameSummaryRow, MessageRow } from './types';
 import { 
   GameState, 
   GameSummary, 
@@ -10,8 +10,7 @@ import {
   Background,
   Attributes,
   Skills,
-  BACKGROUNDS,
-  DEFAULT_SKILLS
+  BACKGROUNDS
 } from '../types';
 
 // ============================================
@@ -129,6 +128,7 @@ export interface CreateGameParams {
   motivation: string;
   scenario: 'day-one' | 'week-in' | 'custom';
   customScenario?: string;
+  portraitUrl?: string;
 }
 
 export async function createGame(params: CreateGameParams): Promise<string> {
@@ -157,6 +157,7 @@ export async function createGame(params: CreateGameParams): Promise<string> {
     name: params.name,
     background: params.background,
     motivation: params.motivation,
+    portraitUrl: params.portraitUrl,
     attributes: params.attributes,
     skills,
     wounds: { bruised: 0, bleeding: 0, broken: 0, critical: false },
@@ -306,6 +307,68 @@ export async function createGame(params: CreateGameParams): Promise<string> {
     console.error('Error creating game:', gameError);
     throw gameError;
   }
+
+  // Create initial GM message based on scenario
+  let initialMessage: string;
+  
+  if (params.scenario === 'day-one') {
+    initialMessage = `**Day One**
+
+You wake to screaming.
+
+Not the usual city sounds — traffic, construction, the neighbor's dog. This is different. Raw. Desperate. It's coming from everywhere and nowhere.
+
+Your phone buzzes with emergency alerts. The TV shows chaos: overrun hospitals, military cordons, fires on the horizon. The words "state of emergency" scroll across the screen.
+
+Through your window, you see someone running down the street. They're being chased.
+
+${character.name}, ${backgroundData.name}. Your motivation burns in your chest: *${params.motivation}*
+
+The world you knew ended while you slept. What do you do now?
+
+**What's your first move?**`;
+  } else if (params.scenario === 'week-in') {
+    const foodStatus = character.food > 0 ? `You have ${character.food} days of food.` : "You're out of food.";
+    const waterStatus = character.water > 0 ? `${character.water} days of water.` : 'No clean water left.';
+    
+    initialMessage = `**Week In**
+
+Seven days since everything fell apart.
+
+You're in an abandoned building — not home, just shelter. Better than nothing. Outside, the streets belong to the infected now. Most survivors have fled, died, or... changed.
+
+Your supplies are running low. ${foodStatus} ${waterStatus}
+
+The world has new rules now. Sound draws them. Night is death. Trust is expensive.
+
+${character.name}, ${backgroundData.name}. You keep going because of one thing: *${params.motivation}*
+
+The sun is setting. Another night is coming.
+
+**What do you do?**`;
+  } else {
+    const scenarioTitle = params.customScenario || 'A New Story';
+    initialMessage = `**${scenarioTitle}**
+
+${character.name}, ${backgroundData.name}.
+
+In this world of the infected, you cling to one truth: *${params.motivation}*
+
+The story begins here.
+
+**What do you do?**`;
+  }
+
+  // Add the initial message
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase as any)
+    .from('messages')
+    .insert({
+      game_id: gameData.id,
+      role: 'gm',
+      content: initialMessage,
+      sequence_num: 1
+    });
 
   return gameData.id;
 }

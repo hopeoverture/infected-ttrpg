@@ -9,9 +9,10 @@ import {
   Attributes, 
   Skills, 
   DEFAULT_SKILLS,
-  SkillName,
-  SKILL_ATTRIBUTES
+  SkillName
 } from '@/lib/types';
+import { createGame } from '@/lib/supabase/games';
+import CharacterPortrait from '@/components/game/CharacterPortrait';
 
 type CreationStep = 'background' | 'attributes' | 'skills' | 'story';
 
@@ -54,6 +55,9 @@ export default function NewGame() {
   const [motivation, setMotivation] = useState('');
   const [scenario, setScenario] = useState<'day-one' | 'week-in' | 'custom'>('day-one');
   const [customScenario, setCustomScenario] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
 
   const attributePoints = 12 - (attributes.grit + attributes.reflex + attributes.wits + attributes.nerve);
   const skillPoints = 12 - Object.values(skills).reduce((a, b) => a + b, 0);
@@ -98,31 +102,45 @@ export default function NewGame() {
   const nextStep = () => {
     const steps: CreationStep[] = ['background', 'attributes', 'skills', 'story'];
     const currentIndex = steps.indexOf(step);
-    if (currentIndex < steps.length - 1) {
-      setStep(steps[currentIndex + 1]);
+    const nextStepValue = steps[currentIndex + 1];
+    if (currentIndex < steps.length - 1 && nextStepValue) {
+      setStep(nextStepValue);
     }
   };
 
   const prevStep = () => {
     const steps: CreationStep[] = ['background', 'attributes', 'skills', 'story'];
     const currentIndex = steps.indexOf(step);
-    if (currentIndex > 0) {
-      setStep(steps[currentIndex - 1]);
+    const prevStepValue = steps[currentIndex - 1];
+    if (currentIndex > 0 && prevStepValue) {
+      setStep(prevStepValue);
     }
   };
 
-  const startGame = () => {
-    // TODO: Create game in storage and navigate
-    console.log('Starting game with:', {
-      name,
-      background,
-      attributes,
-      skills,
-      motivation,
-      scenario,
-      customScenario
-    });
-    router.push('/game/new-game-id');
+  const startGame = async () => {
+    if (!background) return;
+    
+    setIsCreating(true);
+    setError(null);
+
+    try {
+      const gameId = await createGame({
+        name,
+        background,
+        attributes,
+        skills,
+        motivation,
+        scenario,
+        customScenario: scenario === 'custom' ? customScenario : undefined,
+        portraitUrl: portraitUrl || undefined
+      });
+
+      router.push(`/game/${gameId}`);
+    } catch (err) {
+      console.error('Failed to create game:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create game. Please try again.');
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -194,14 +212,37 @@ export default function NewGame() {
 
                 {background && (
                   <div className="panel bg-card mt-4">
-                    <h3 className="font-semibold text-gold mb-2">{BACKGROUNDS[background].name}</h3>
-                    <p className="text-secondary text-sm mb-3 italic">
-                      "{BACKGROUNDS[background].description}"
-                    </p>
-                    <div className="text-sm">
-                      <span className="text-muted">Starting Gear: </span>
-                      {BACKGROUNDS[background].gear.join(', ')}
+                    <div className="flex gap-4">
+                      {/* Portrait generation */}
+                      <div className="flex-shrink-0">
+                        <CharacterPortrait
+                          portraitUrl={portraitUrl}
+                          characterName={name || 'Survivor'}
+                          characterBackground={background}
+                          size="large"
+                          editable={name.trim().length > 0}
+                          onPortraitChange={setPortraitUrl}
+                        />
+                      </div>
+                      
+                      {/* Background info */}
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gold mb-2">{BACKGROUNDS[background].name}</h3>
+                        <p className="text-secondary text-sm mb-3 italic">
+                          &ldquo;{BACKGROUNDS[background].description}&rdquo;
+                        </p>
+                        <div className="text-sm">
+                          <span className="text-muted">Starting Gear: </span>
+                          {BACKGROUNDS[background].gear.join(', ')}
+                        </div>
+                      </div>
                     </div>
+                    
+                    {!portraitUrl && name.trim().length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-subtle text-xs text-muted text-center">
+                        💡 Click the avatar above to generate an AI portrait for {name}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -395,11 +436,18 @@ export default function NewGame() {
           </div>
         )}
 
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-4 rounded-lg bg-danger/20 border border-danger text-danger">
+            {error}
+          </div>
+        )}
+
         {/* Navigation Buttons */}
         <div className="flex justify-between">
           <button
             onClick={prevStep}
-            disabled={step === 'background'}
+            disabled={step === 'background' || isCreating}
             className="btn disabled:opacity-30"
           >
             ← Back
@@ -416,10 +464,10 @@ export default function NewGame() {
           ) : (
             <button
               onClick={startGame}
-              disabled={!canProceed()}
+              disabled={!canProceed() || isCreating}
               className="btn btn-primary disabled:opacity-30"
             >
-              BEGIN SURVIVAL
+              {isCreating ? 'Creating...' : 'BEGIN SURVIVAL'}
             </button>
           )}
         </div>

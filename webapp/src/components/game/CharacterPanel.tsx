@@ -1,6 +1,7 @@
 'use client';
 
 import { Character, BACKGROUNDS } from '@/lib/types';
+import CharacterPortrait from './CharacterPortrait';
 
 interface CharacterPanelProps {
   character: Character;
@@ -65,8 +66,14 @@ export default function CharacterPanel({ character }: CharacterPanelProps) {
     <div className="p-4">
       {/* Character Header */}
       <div className="text-center mb-4 pb-4 border-b border-subtle">
-        <div className="w-16 h-16 rounded-full bg-card border-2 border-subtle mx-auto mb-2 flex items-center justify-center text-2xl">
-          👤
+        <div className="mx-auto mb-2">
+          <CharacterPortrait
+            portraitUrl={character.portraitUrl}
+            characterName={character.name}
+            characterBackground={character.background}
+            size="small"
+            editable={false}
+          />
         </div>
         <h2 className="font-semibold text-lg">{character.name}</h2>
         <div className="text-sm text-secondary">{background.name}</div>

@@ -100,6 +100,7 @@ export interface Character {
   name: string;
   background: Background;
   motivation: string;
+  portraitUrl?: string;
   attributes: Attributes;
   skills: Skills;
   wounds: Wounds;
@@ -123,6 +124,7 @@ export interface Location {
   scarcity: Scarcity;
   ambientThreat: number;
   searched: boolean;
+  sceneImageUrl?: string;
 }
 
 export interface NPC {
