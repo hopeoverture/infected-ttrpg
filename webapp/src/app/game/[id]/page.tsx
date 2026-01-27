@@ -533,6 +533,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
                 locationName={gameState.location.name}
                 timeOfDay={gameState.time}
                 mood={gameState.threatState === 'safe' ? 'safe' : gameState.threatState === 'encounter' || gameState.threatState === 'swarm' ? 'dangerous' : 'tense'}
+                artStyle={gameState.character.artStyle}
                 cachedImageUrl={sceneImageUrl || gameState.location.sceneImageUrl}
                 onImageGenerated={handleSceneImageGenerated}
                 autoGenerate={!!currentSceneDescription}

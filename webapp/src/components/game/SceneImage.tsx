@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
+import { ArtStyle } from '@/lib/types';
 
 interface SceneImageProps {
   sceneDescription: string | null;
   locationName: string;
   timeOfDay: string;
   mood?: string;
+  artStyle?: ArtStyle;
   onImageGenerated?: (url: string) => void;
   cachedImageUrl?: string | null;
   autoGenerate?: boolean;
@@ -18,6 +20,7 @@ export default function SceneImage({
   locationName,
   timeOfDay,
   mood = 'tense',
+  artStyle = 'cinematic',
   onImageGenerated,
   cachedImageUrl,
   autoGenerate = true
@@ -35,15 +38,16 @@ export default function SceneImage({
     setError(null);
 
     try {
-      // Build scene description string with metadata
-      const fullDescription = `${locationName}|${sceneDescription}|${timeOfDay}|${mood}`;
-
       const response = await fetch('/api/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'scene',
-          sceneDescription: fullDescription
+          locationName,
+          sceneDescription,
+          timeOfDay,
+          mood,
+          artStyle
         })
       });
 
@@ -73,7 +77,7 @@ export default function SceneImage({
     } finally {
       setIsLoading(false);
     }
-  }, [sceneDescription, locationName, timeOfDay, mood, isLoading, imageUrl, onImageGenerated]);
+  }, [sceneDescription, locationName, timeOfDay, mood, artStyle, isLoading, imageUrl, onImageGenerated]);
 
   // Auto-generate when scene description changes
   useEffect(() => {
