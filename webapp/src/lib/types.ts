@@ -243,6 +243,7 @@ export interface GameState {
   
   // Story
   objectives: Objective[];
+  scenarioId?: string; // Premade scenario ID for story guidance
   
   // Session
   messages: Message[];

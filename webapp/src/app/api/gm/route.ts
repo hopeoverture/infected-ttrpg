@@ -348,7 +348,7 @@ export async function POST(request: NextRequest) {
       party: gameState.party,
       objectives: gameState.objectives,
       combatState: gameState.combatState,
-    });
+    }, gameState.scenarioId); // Pass scenario ID for story guidance
     
     // Build conversation history
     const history = buildConversationHistory(gameState);

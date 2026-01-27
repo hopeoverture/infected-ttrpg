@@ -21,6 +21,7 @@ import { createGame } from '@/lib/supabase/games';
 import CharacterPortrait from '@/components/game/CharacterPortrait';
 import CreationNarrationUI from '@/components/game/CreationNarrationUI';
 import { useCreationNarration } from '@/hooks/useCreationNarration';
+import { SCENARIOS, getScenariosByTimeframe, getDifficultyStyle, GameScenario } from '@/lib/scenarios';
 
 type CreationStep = 'background' | 'appearance' | 'attributes' | 'skills' | 'story';
 
@@ -159,8 +160,9 @@ export default function NewGame() {
   const [attributes, setAttributes] = useState<Attributes>({ grit: 3, reflex: 3, wits: 3, nerve: 3 });
   const [skills, setSkills] = useState<Skills>({ ...DEFAULT_SKILLS });
   const [motivation, setMotivation] = useState('');
-  const [scenario, setScenario] = useState<'day-one' | 'week-in' | 'custom'>('day-one');
+  const [selectedScenario, setSelectedScenario] = useState<GameScenario | null>(SCENARIOS[0] || null);
   const [customScenario, setCustomScenario] = useState('');
+  const [scenarioTab, setScenarioTab] = useState<'premade' | 'custom'>('premade');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
@@ -219,7 +221,9 @@ export default function NewGame() {
       case 'skills':
         return skillPoints === 0;
       case 'story':
-        return motivation.trim().length > 0 && (scenario !== 'custom' || customScenario.trim().length > 0);
+        return motivation.trim().length > 0 && (
+          scenarioTab === 'premade' ? selectedScenario !== null : customScenario.trim().length > 0
+        );
     }
   };
 
@@ -257,8 +261,8 @@ export default function NewGame() {
         attributes,
         skills,
         motivation,
-        scenario,
-        customScenario: scenario === 'custom' ? customScenario : undefined,
+        scenario: scenarioTab === 'custom' ? 'custom' : (selectedScenario?.id || 'day-one-classic'),
+        customScenario: scenarioTab === 'custom' ? customScenario : undefined,
         portraitUrl: portraitUrl || undefined,
         appearance,
         artStyle
@@ -750,64 +754,146 @@ export default function NewGame() {
 
               <div>
                 <label className="panel-label">Starting Scenario</label>
-                <div className="space-y-3">
-                  <label className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
-                    scenario === 'day-one' ? 'border-gold bg-gold/10' : 'border-subtle hover:border-medium'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="scenario"
-                      checked={scenario === 'day-one'}
-                      onChange={() => setScenario('day-one')}
-                      className="mt-1"
-                    />
-                    <div>
-                      <div className="font-medium">Day One</div>
-                      <div className="text-sm text-secondary">Wake up as the outbreak begins. Everything changes today.</div>
-                    </div>
-                  </label>
-
-                  <label className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
-                    scenario === 'week-in' ? 'border-gold bg-gold/10' : 'border-subtle hover:border-medium'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="scenario"
-                      checked={scenario === 'week-in'}
-                      onChange={() => setScenario('week-in')}
-                      className="mt-1"
-                    />
-                    <div>
-                      <div className="font-medium">Week In</div>
-                      <div className="text-sm text-secondary">Already surviving. Society has collapsed. Things are getting worse.</div>
-                    </div>
-                  </label>
-
-                  <label className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
-                    scenario === 'custom' ? 'border-gold bg-gold/10' : 'border-subtle hover:border-medium'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="scenario"
-                      checked={scenario === 'custom'}
-                      onChange={() => setScenario('custom')}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium">Custom</div>
-                      <div className="text-sm text-secondary mb-2">Describe your starting situation...</div>
-                      {scenario === 'custom' && (
-                        <textarea
-                          value={customScenario}
-                          onChange={(e) => setCustomScenario(e.target.value)}
-                          placeholder="Where are you? What's happening? Who's with you?"
-                          className="input min-h-[80px]"
-                          maxLength={500}
-                        />
-                      )}
-                    </div>
-                  </label>
+                
+                {/* Tab Selection */}
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setScenarioTab('premade')}
+                    className={`flex-1 py-2 px-4 rounded-lg border transition-all ${
+                      scenarioTab === 'premade' 
+                        ? 'border-gold bg-gold/10 text-primary' 
+                        : 'border-subtle hover:border-medium text-secondary'
+                    }`}
+                  >
+                    📚 Premade Stories
+                  </button>
+                  <button
+                    onClick={() => setScenarioTab('custom')}
+                    className={`flex-1 py-2 px-4 rounded-lg border transition-all ${
+                      scenarioTab === 'custom' 
+                        ? 'border-gold bg-gold/10 text-primary' 
+                        : 'border-subtle hover:border-medium text-secondary'
+                    }`}
+                  >
+                    ✏️ Custom
+                  </button>
                 </div>
+
+                {scenarioTab === 'premade' ? (
+                  <div className="space-y-6">
+                    {/* Timeframe Groups */}
+                    {Object.entries(getScenariosByTimeframe()).map(([timeframe, scenarios]) => {
+                      if (scenarios.length === 0) return null;
+                      const timeframeLabels: Record<string, { label: string; desc: string }> = {
+                        'day-one': { label: '🌅 Day One', desc: 'The outbreak begins' },
+                        'early': { label: '📅 Early Days', desc: '1-2 weeks in' },
+                        'established': { label: '🏕️ Established', desc: '1+ months in' },
+                        'late': { label: '❄️ Late Stage', desc: '6+ months in' }
+                      };
+                      const info = timeframeLabels[timeframe] || { label: timeframe, desc: '' };
+                      
+                      return (
+                        <div key={timeframe}>
+                          <div className="flex items-center gap-2 mb-3">
+                            <h4 className="text-sm font-semibold uppercase tracking-wider text-muted">
+                              {info.label}
+                            </h4>
+                            <span className="text-xs text-muted">— {info.desc}</span>
+                          </div>
+                          <div className="grid gap-3">
+                            {scenarios.map((s) => {
+                              const diffStyle = getDifficultyStyle(s.difficulty);
+                              const isSelected = selectedScenario?.id === s.id;
+                              
+                              return (
+                                <button
+                                  key={s.id}
+                                  onClick={() => setSelectedScenario(s)}
+                                  className={`text-left p-4 rounded-lg border transition-all ${
+                                    isSelected 
+                                      ? 'border-gold bg-gold/10' 
+                                      : 'border-subtle hover:border-medium'
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <span className="text-2xl">{s.icon}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-medium">{s.name}</span>
+                                        <span className={`text-xs px-2 py-0.5 rounded ${diffStyle.bg} ${diffStyle.color}`}>
+                                          {diffStyle.label}
+                                        </span>
+                                      </div>
+                                      <div className="text-sm text-gold italic">{s.tagline}</div>
+                                      <div className="text-sm text-secondary mt-1 line-clamp-2">
+                                        {s.description}
+                                      </div>
+                                      {isSelected && (
+                                        <div className="mt-3 pt-3 border-t border-subtle">
+                                          <div className="text-xs text-muted uppercase tracking-wider mb-2">
+                                            Themes
+                                          </div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {s.themes.map((theme) => (
+                                              <span 
+                                                key={theme}
+                                                className="text-xs px-2 py-0.5 rounded bg-surface border border-subtle text-secondary"
+                                              >
+                                                {theme}
+                                              </span>
+                                            ))}
+                                          </div>
+                                          <div className="text-xs text-muted uppercase tracking-wider mt-3 mb-2">
+                                            Key NPCs
+                                          </div>
+                                          <div className="flex flex-wrap gap-2">
+                                            {s.npcs.slice(0, 3).map((npc) => (
+                                              <span 
+                                                key={npc.name}
+                                                className="text-xs text-secondary"
+                                                title={npc.role}
+                                              >
+                                                {npc.name} ({npc.role})
+                                              </span>
+                                            ))}
+                                            {s.npcs.length > 3 && (
+                                              <span className="text-xs text-muted">
+                                                +{s.npcs.length - 3} more
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {isSelected && (
+                                      <span className="text-gold">✓</span>
+                                    )}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-secondary">
+                      Describe your starting situation. The GM will craft a unique story based on your description.
+                    </p>
+                    <textarea
+                      value={customScenario}
+                      onChange={(e) => setCustomScenario(e.target.value)}
+                      placeholder="Where are you when the story begins? What's happening around you? Who else is there? What immediate danger or goal do you face?"
+                      className="input min-h-[160px]"
+                      maxLength={1000}
+                    />
+                    <div className="text-xs text-muted text-right">
+                      {customScenario.length}/1000
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

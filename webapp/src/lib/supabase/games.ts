@@ -12,6 +12,7 @@ import {
   Skills,
   BACKGROUNDS
 } from '../types';
+import { getScenario } from '../scenarios';
 
 // ============================================
 // Type Converters
@@ -37,6 +38,8 @@ export function dbRowToGameState(row: GameRow, messages: MessageRow[]): GameStat
   const party = (row.party as unknown as GameState['party']) || [];
   const objectives = (row.objectives as unknown as GameState['objectives']) || [];
   const combatState = row.combat_state as unknown as GameState['combatState'];
+  // Handle scenario_id - may not exist in older records
+  const scenarioId = (row as Record<string, unknown>).scenario_id as string | undefined;
 
   return {
     id: row.id,
@@ -51,6 +54,7 @@ export function dbRowToGameState(row: GameRow, messages: MessageRow[]): GameStat
     threatState: row.threat_state,
     party,
     objectives,
+    scenarioId,
     messages: messages.map(m => ({
       id: m.id,
       role: m.role,
@@ -126,7 +130,7 @@ export interface CreateGameParams {
   attributes: Attributes;
   skills: Skills;
   motivation: string;
-  scenario: 'day-one' | 'week-in' | 'custom';
+  scenario: string; // Scenario ID or 'custom'
   customScenario?: string;
   portraitUrl?: string;
   appearance?: import('../types').CharacterAppearance;
@@ -270,26 +274,41 @@ export async function createGame(params: CreateGameParams): Promise<string> {
     };
   }
 
-  // Starting location
-  const location = {
-    name: params.scenario === 'day-one' ? 'Your Home' : 'Abandoned Building',
-    description: params.scenario === 'day-one' 
-      ? 'The familiar walls of your home. But something is very wrong outside.'
-      : 'A temporary shelter. Better than nothing.',
-    lightLevel: 'bright' as const,
-    scarcity: 'moderate' as const,
-    ambientThreat: params.scenario === 'day-one' ? 1 : 3,
-    searched: false
-  };
+  // Get scenario data
+  const scenarioData = params.scenario !== 'custom' ? getScenario(params.scenario) : null;
+  const isEarlyOutbreak = scenarioData?.timeframe === 'day-one' || scenarioData?.timeframe === 'early';
+  
+  // Starting location from scenario or defaults
+  const location = scenarioData?.startingLocation 
+    ? {
+        name: scenarioData.startingLocation.name,
+        description: scenarioData.startingLocation.description,
+        lightLevel: 'bright' as const,
+        scarcity: 'moderate' as const,
+        ambientThreat: isEarlyOutbreak ? 2 : 4,
+        searched: false
+      }
+    : {
+        name: 'Unknown Location',
+        description: params.customScenario || 'Your story begins here.',
+        lightLevel: 'bright' as const,
+        scarcity: 'moderate' as const,
+        ambientThreat: 3,
+        searched: false
+      };
 
-  // Create game title
-  const title = params.scenario === 'day-one' 
-    ? 'Day One' 
-    : params.scenario === 'week-in' 
-      ? 'Week In' 
-      : params.customScenario?.slice(0, 30) || 'New Story';
+  // Create game title from scenario
+  const title = scenarioData?.name || params.customScenario?.slice(0, 30) || 'New Story';
 
   // Insert game - use any to bypass strict typing issues with Supabase client
+  // Calculate starting day and threat based on scenario timeframe
+  const startingDay = scenarioData 
+    ? { 'day-one': 1, 'early': 10, 'established': 35, 'late': 180 }[scenarioData.timeframe] || 1
+    : 1;
+  const startingThreat = scenarioData
+    ? { 'day-one': 2, 'early': 4, 'established': 5, 'late': 6 }[scenarioData.timeframe] || 3
+    : 3;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: gameData, error: gameError } = await (supabase as any)
     .from('games')
@@ -297,12 +316,22 @@ export async function createGame(params: CreateGameParams): Promise<string> {
       user_id: user.id,
       title,
       character,
-      day: params.scenario === 'day-one' ? 1 : 7,
+      day: startingDay,
       time_of_day: 'day',
       location,
-      threat: params.scenario === 'day-one' ? 2 : 4,
+      threat: startingThreat,
       threat_state: 'safe',
-      session_start_time: new Date().toISOString()
+      session_start_time: new Date().toISOString(),
+      // Store scenario data for GM reference
+      scenario_id: params.scenario,
+      scenario_data: scenarioData ? JSON.stringify({
+        id: scenarioData.id,
+        name: scenarioData.name,
+        npcs: scenarioData.npcs,
+        storyBeats: scenarioData.storyBeats,
+        potentialTwists: scenarioData.potentialTwists,
+        toneGuidance: scenarioData.toneGuidance
+      }) : null
     })
     .select('id')
     .single();
@@ -315,50 +344,59 @@ export async function createGame(params: CreateGameParams): Promise<string> {
   // Create initial GM message based on scenario
   let initialMessage: string;
   
-  if (params.scenario === 'day-one') {
-    initialMessage = `**Day One**
-
-You wake to screaming.
-
-Not the usual city sounds — traffic, construction, the neighbor's dog. This is different. Raw. Desperate. It's coming from everywhere and nowhere.
-
-Your phone buzzes with emergency alerts. The TV shows chaos: overrun hospitals, military cordons, fires on the horizon. The words "state of emergency" scroll across the screen.
-
-Through your window, you see someone running down the street. They're being chased.
-
-${character.name}, ${backgroundData.name}. Your motivation burns in your chest: *${params.motivation}*
-
-The world you knew ended while you slept. What do you do now?
-
-**What's your first move?**`;
-  } else if (params.scenario === 'week-in') {
-    const foodStatus = character.food > 0 ? `You have ${character.food} days of food.` : "You're out of food.";
-    const waterStatus = character.water > 0 ? `${character.water} days of water.` : 'No clean water left.';
+  if (scenarioData) {
+    // Generate message from scenario template
+    const firstBeat = scenarioData.storyBeats[0];
+    const firstNpc = scenarioData.npcs[0];
     
-    initialMessage = `**Week In**
+    // Build atmospheric intro based on scenario
+    initialMessage = `**${scenarioData.name}**
 
-Seven days since everything fell apart.
+*${scenarioData.tagline}*
 
-You're in an abandoned building — not home, just shelter. Better than nothing. Outside, the streets belong to the infected now. Most survivors have fled, died, or... changed.
+---
 
-Your supplies are running low. ${foodStatus} ${waterStatus}
+${scenarioData.description}
 
-The world has new rules now. Sound draws them. Night is death. Trust is expensive.
+You find yourself at **${scenarioData.startingLocation.name}** — ${scenarioData.startingLocation.description.toLowerCase()}
 
-${character.name}, ${backgroundData.name}. You keep going because of one thing: *${params.motivation}*
+${character.name}, ${backgroundData.name}. Your motivation burns within you: *${params.motivation}*
 
-The sun is setting. Another night is coming.
+${scenarioData.startingLocation.dangers.length > 0 
+  ? `\n*Dangers nearby: ${scenarioData.startingLocation.dangers.slice(0, 2).join(', ')}*` 
+  : ''}
+
+${firstNpc ? `\nYou're not alone. Nearby, you notice **${firstNpc.name}** — ${firstNpc.role.toLowerCase()}. ${firstNpc.personality}` : ''}
+
+${firstBeat ? `\n*${firstBeat.title}: ${firstBeat.description}*` : ''}
 
 **What do you do?**`;
-  } else {
-    const scenarioTitle = params.customScenario || 'A New Story';
-    initialMessage = `**${scenarioTitle}**
+  } else if (params.customScenario) {
+    // Custom scenario
+    initialMessage = `**A New Story**
+
+${params.customScenario}
+
+---
 
 ${character.name}, ${backgroundData.name}.
 
 In this world of the infected, you cling to one truth: *${params.motivation}*
 
-The story begins here.
+Your story begins now.
+
+**What do you do?**`;
+  } else {
+    // Fallback
+    initialMessage = `**Day One**
+
+You wake to screaming.
+
+Not the usual city sounds — traffic, construction, the neighbor's dog. This is different. Raw. Desperate.
+
+${character.name}, ${backgroundData.name}. Your motivation: *${params.motivation}*
+
+The world you knew is ending.
 
 **What do you do?**`;
   }

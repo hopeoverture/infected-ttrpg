@@ -452,13 +452,55 @@ When the location changes significantly OR when there's a major visual moment wo
 
 Remember: Be the horror. Be the hope. Be fair. Roll dice, follow rules, create tension.`;
 
-export function buildContextualPrompt(gameState: unknown): string {
+import { getScenario, GameScenario } from '../scenarios';
+
+export function buildContextualPrompt(gameState: unknown, scenarioId?: string): string {
+  let scenarioGuidance = '';
+  
+  if (scenarioId && scenarioId !== 'custom') {
+    const scenario = getScenario(scenarioId);
+    if (scenario) {
+      scenarioGuidance = buildScenarioGuidance(scenario);
+    }
+  }
+
   return `
+${scenarioGuidance}
 ## CURRENT GAME STATE
 \`\`\`json
 ${JSON.stringify(gameState, null, 2)}
 \`\`\`
 
 Based on this state, respond to the player's action following all rules and format requirements.
+`;
+}
+
+function buildScenarioGuidance(scenario: GameScenario): string {
+  return `
+## SCENARIO: ${scenario.name}
+*${scenario.tagline}*
+
+### Tone Guidance
+${scenario.toneGuidance}
+
+### Themes to Explore
+${scenario.themes.map(t => `- ${t}`).join('\n')}
+
+### Key NPCs (introduce gradually, don't force them)
+${scenario.npcs.map(npc => `- **${npc.name}** (${npc.role}): ${npc.personality}${npc.secret ? ` [SECRET: ${npc.secret}]` : ''}`).join('\n')}
+
+### Story Beats (guide the narrative toward these)
+${scenario.storyBeats.map(beat => `**Act ${beat.act}: ${beat.title}** - ${beat.description}`).join('\n')}
+
+### Potential Twists (use sparingly, when dramatically appropriate)
+${scenario.potentialTwists.map(t => `- ${t}`).join('\n')}
+
+### Key Locations
+${scenario.keyLocations.map(loc => `- **${loc.name}**: ${loc.description}`).join('\n')}
+
+### Win Conditions (long-term goals)
+${scenario.winConditions.map(w => `- ${w}`).join('\n')}
+
+**Important**: Use this scenario as a framework, not a script. Let the player's choices drive the story. Introduce NPCs and locations organically. Don't railroad—adapt the beats to their decisions.
 `;
 }
