@@ -2,7 +2,7 @@
  * Rate limiter tests - run with: npx tsx src/lib/rate-limit.test.ts
  */
 
-import { checkRateLimit, RATE_LIMITS, RateLimitResult } from './rate-limit';
+import { checkRateLimit, RATE_LIMITS } from './rate-limit';
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -57,7 +57,7 @@ async function testRateLimiter() {
   checkRateLimit(shortId, shortConfig);
   checkRateLimit(shortId, shortConfig);
   
-  let limitedResult = checkRateLimit(shortId, shortConfig);
+  const limitedResult = checkRateLimit(shortId, shortConfig);
   if (limitedResult.success) {
     console.error('  ❌ FAIL: Should be rate limited');
     process.exit(1);

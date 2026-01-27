@@ -1,13 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
 export default function SignupPage() {
-  const router = useRouter();
-  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -58,7 +55,7 @@ export default function SignupPage() {
           <div className="text-6xl mb-4">📧</div>
           <h2 className="text-2xl font-bold mb-4">Check your email</h2>
           <p className="text-secondary mb-6">
-            We've sent a confirmation link to <strong>{email}</strong>. 
+            We&apos;ve sent a confirmation link to <strong>{email}</strong>. 
             Click the link to verify your account.
           </p>
           <Link href="/login" className="btn btn-primary">

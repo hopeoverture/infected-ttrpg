@@ -94,7 +94,7 @@ export function ErrorFallback({ error, onRetry }: ErrorFallbackProps): React.Rea
         
         {/* Message */}
         <p className="text-secondary mb-6">
-          An unexpected error occurred. Don't worry, your progress has been saved.
+          An unexpected error occurred. Don&apos;t worry, your progress has been saved.
         </p>
         
         {/* Error details in development */}
@@ -134,13 +134,13 @@ export function ErrorFallback({ error, onRetry }: ErrorFallbackProps): React.Rea
           >
             ↻ Reload Page
           </button>
-          <a
-            href="/"
+          <button
+            onClick={() => window.location.href = '/'}
             className="btn btn-secondary"
             aria-label="Return to dashboard"
           >
             🏠 Dashboard
-          </a>
+          </button>
         </div>
         
         {/* Help text */}
@@ -176,7 +176,7 @@ export function GameErrorBoundary({ children }: { children: ReactNode }): React.
             </p>
             
             <p className="text-muted text-sm mb-8">
-              Your character's story has been preserved. The nightmare can continue when you're ready.
+              Your character&apos;s story has been preserved. The nightmare can continue when you&apos;re ready.
             </p>
             
             <div className="space-y-3">
@@ -188,13 +188,13 @@ export function GameErrorBoundary({ children }: { children: ReactNode }): React.
                 📻 Tune Back In
               </button>
               
-              <a
-                href="/"
+              <button
+                onClick={() => window.location.href = '/'}
                 className="btn btn-secondary w-full block"
                 aria-label="Return to dashboard"
               >
                 🏚️ Return to Safety
-              </a>
+              </button>
             </div>
           </div>
         </div>

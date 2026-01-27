@@ -1,7 +1,6 @@
 // Supabase Database Types
 // These match the schema.sql definitions
-
-import { Character, GameState, RollResult } from '../types';
+// Note: Json fields contain Character, GameState, and RollResult types from ../types
 
 export type Json =
   | string

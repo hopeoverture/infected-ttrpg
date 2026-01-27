@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { GameState, ThreatState } from '@/lib/types';
 
 interface GameStatePanelProps {
@@ -202,7 +203,11 @@ function ObjectivesList({ objectives }: { objectives: GameState['objectives'] })
 }
 
 function SessionStats({ gameState }: { gameState: GameState }) {
-  const sessionDuration = Math.floor((Date.now() - gameState.sessionStartTime.getTime()) / 1000 / 60);
+  // Use useMemo with session start time as dependency to avoid impure Date.now() in render
+  const sessionDuration = useMemo(() => {
+    const now = new Date();
+    return Math.floor((now.getTime() - gameState.sessionStartTime.getTime()) / 1000 / 60);
+  }, [gameState.sessionStartTime]);
 
   return (
     <div>

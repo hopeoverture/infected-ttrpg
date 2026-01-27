@@ -225,7 +225,7 @@ export default function CharacterPanel({ character }: CharacterPanelProps) {
           </summary>
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             {Object.entries(character.skills)
-              .filter(([_, value]) => value > 0)
+              .filter(([, value]) => value > 0)
               .sort((a, b) => b[1] - a[1])
               .map(([skill, value]) => (
                 <div key={skill} className="flex justify-between">

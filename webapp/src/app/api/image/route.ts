@@ -142,7 +142,6 @@ async function generateWithReplicate(prompt: string, type: 'portrait' | 'scene')
   // Use SDXL for better quality
   const modelVersion = 'stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b';
   
-  const aspectRatio = type === 'portrait' ? '1:1' : '16:9';
   const negativePrompt = type === 'portrait' 
     ? STYLE_PRESETS.portrait.negative 
     : STYLE_PRESETS.scene.negative;

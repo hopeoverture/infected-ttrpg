@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { GameSummary, BACKGROUNDS, Background } from '@/lib/types';
+import { GameSummary, BACKGROUNDS } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
 import { getGames } from '@/lib/supabase/games';
 
