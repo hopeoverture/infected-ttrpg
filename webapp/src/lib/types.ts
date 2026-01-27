@@ -346,3 +346,25 @@ export const DEFAULT_SKILLS: Skills = {
   intimidate: 0,
   animals: 0
 };
+
+// GM API State Changes - shared between API route and hooks
+export interface GMStateChanges {
+  threat?: number | null;
+  threatState?: ThreatState | null;
+  stress?: number | null;
+  wounds?: { type: 'bruised' | 'bleeding' | 'broken' | 'critical'; change: number } | null;
+  guts?: number | null;
+  gutsEarned?: number | null;
+  location?: {
+    name: string;
+    description: string;
+    lightLevel: LightLevel;
+    scarcity: Scarcity;
+    ambientThreat: number;
+  } | null;
+  time?: TimeOfDay | null;
+  day?: number | null;
+  inventory?: { add?: string[]; remove?: string[] } | null;
+  objectives?: { add?: string[]; complete?: string[] } | null;
+  party?: Array<{ id: string; name: string; status?: string; relationship?: string }> | null;
+}

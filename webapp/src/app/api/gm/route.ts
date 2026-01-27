@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GM_SYSTEM_PROMPT, buildContextualPrompt } from '@/lib/ai/gm-prompt';
 import { rollDicePool, rollOpposed, rollInfectionCheck, rollBreakingPoint } from '@/lib/game-engine/dice';
-import { GameState, RollResult, AttributeName, SkillName } from '@/lib/types';
+import { GameState, RollResult, AttributeName, SkillName, GMStateChanges } from '@/lib/types';
 import { 
   checkRateLimit, 
   getClientIdentifier, 
@@ -19,27 +19,6 @@ interface GMRoll {
   reason?: string;
   difficulty?: number;
   isPush?: boolean;
-}
-
-interface GMStateChanges {
-  threat?: number | null;
-  threatState?: 'safe' | 'noticed' | 'investigating' | 'encounter' | 'swarm' | null;
-  stress?: number | null;
-  wounds?: { type: 'bruised' | 'bleeding' | 'broken' | 'critical'; change: number } | null;
-  guts?: number | null;
-  gutsEarned?: number | null;
-  location?: {
-    name: string;
-    description: string;
-    lightLevel: 'dark' | 'dim' | 'bright';
-    scarcity: 'pristine' | 'untouched' | 'moderate' | 'sparse' | 'picked-clean';
-    ambientThreat: number;
-  } | null;
-  time?: 'night' | 'dawn' | 'day' | 'dusk' | null;
-  day?: number | null;
-  inventory?: { add?: string[]; remove?: string[] } | null;
-  objectives?: { add?: string[]; complete?: string[] } | null;
-  party?: Array<{ id: string; name: string; status?: string; relationship?: string }> | null;
 }
 
 interface GMResponse {

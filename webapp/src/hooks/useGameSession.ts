@@ -8,32 +8,9 @@ import {
   GameState, 
   Message, 
   RollResult,
-  ThreatState,
-  TimeOfDay,
-  LightLevel,
-  Scarcity
+  GMStateChanges
 } from '@/lib/types';
 import { getGame, updateGame, addMessage } from '@/lib/supabase/games';
-
-// Types for GM API responses
-interface GMStateChanges {
-  threat?: number | null;
-  threatState?: ThreatState | null;
-  stress?: number | null;
-  wounds?: { type: 'bruised' | 'bleeding' | 'broken' | 'critical'; change: number } | null;
-  guts?: number | null;
-  location?: {
-    name: string;
-    description: string;
-    lightLevel: LightLevel;
-    scarcity: Scarcity;
-    ambientThreat: number;
-  } | null;
-  time?: TimeOfDay | null;
-  day?: number | null;
-  inventory?: { add?: string[]; remove?: string[] } | null;
-  objectives?: { add?: string[]; complete?: string[] } | null;
-}
 
 export interface GMApiResponse {
   narrative: string;
