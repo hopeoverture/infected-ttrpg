@@ -1,5 +1,16 @@
 // INFECTED AI GM System Prompt and Rules Context
 
+import {
+  Character,
+  GamePreferences,
+  PERSONALITY_TRAITS,
+  FEARS,
+  COPING_MECHANISMS,
+  MORAL_CODES,
+  SURVIVAL_PHILOSOPHIES
+} from '../types';
+import { DIFFICULTIES, THEMES, TONES } from '../types/game-preferences';
+
 export const INFECTED_RULES = `
 # INFECTED TTRPG - Game Master Rules Reference
 
@@ -335,7 +346,7 @@ ${INFECTED_RULES}
 
 7. **Remember Context**: Reference past events, NPCs, the player's choices. The world should feel consistent.
 
-8. **Suggest Audio**: Include music mood and sound effect cues to enhance immersion.
+8. **Always Include Audio**: ALWAYS include music mood and sound effects in your response. Audio is essential for immersion - every response should have appropriate audio cues matching the scene's mood and action.
 
 ## IMMERSIVE NARRATION GUIDELINES
 
@@ -385,13 +396,46 @@ You MUST respond with valid JSON in this exact format:
   "sceneChanged": false,
   "sceneDescription": null,
   "audio": {
-    "music": null,
-    "soundEffects": []
-  }
+    "music": "ambient-dread",
+    "soundEffects": ["footsteps-slow"]
+  },
+  "dialogSegments": [
+    { "speaker": "gm", "text": "You approach the door carefully.", "isQuoted": false },
+    { "speaker": "npc", "speakerId": "elena-1", "speakerName": "Elena", "text": "Wait! Don't touch that.", "isQuoted": true }
+  ],
+  "suggestedOptions": [
+    { "text": "Search the room carefully", "type": "exploration" },
+    { "text": "\"Hello? Anyone there?\"", "type": "social" },
+    { "text": "Ready your weapon", "type": "combat" }
+  ]
 }
 
-### Audio Cues
-Music and sound effects enhance immersion. Include them when appropriate.
+**IMPORTANT**: Audio should ALWAYS be included. Choose music that matches the scene mood and sound effects that match the action.
+
+### Dialog Segments (REQUIRED for Multi-Voice)
+Break down your narrative into speaker-attributed segments for multi-voice audio:
+- **speaker**: "gm" (narrator), "player" (quoted player speech), or "npc" (NPC dialog)
+- **speakerId**: NPC's unique ID if speaker is "npc"
+- **speakerName**: NPC's name for display
+- **text**: The actual dialog or narration
+- **isQuoted**: true for direct speech in quotes, false for narration
+
+Example:
+"dialogSegments": [
+  { "speaker": "gm", "text": "You approach the barricade. A woman emerges from the shadows.", "isQuoted": false },
+  { "speaker": "npc", "speakerId": "sarah-2", "speakerName": "Sarah", "text": "Stop right there. Who are you?", "isQuoted": true },
+  { "speaker": "gm", "text": "Her rifle is aimed directly at your chest.", "isQuoted": false }
+]
+
+### Suggested Options (REQUIRED)
+Always provide 2-4 contextual actions the player might take:
+- **text**: Short action description (use quotes for dialog options)
+- **type**: "exploration" | "social" | "combat" | "stealth" | "other"
+
+Include a variety of approaches (cautious, bold, social, tactical). At least one safe and one risky option.
+
+### Audio Cues (REQUIRED)
+Music and sound effects are ESSENTIAL for immersion. Include them in EVERY response.
 
 **music**: Mood/style string for background music. Options:
 - "ambient-dread" - Low drones, unsettling quiet (exploration, uncertainty)
@@ -429,12 +473,59 @@ Example audio cue:
 - threat: number 0-10
 - threatState: "safe" | "noticed" | "investigating" | "encounter" | "swarm"
 - stress: number 0-6
-- wounds: { "type": "bruised" | "bleeding" | "broken" | "critical", "change": number } 
+- wounds: { "type": "bruised" | "bleeding" | "broken" | "critical", "change": number }
 - guts: number change (positive or negative)
 - kills: number of infected killed this action (for tracking stats)
 - location: { name, description, lightLevel, scarcity, ambientThreat }
 - inventory: { "add": [], "remove": [] }
 - objectives: { "add": [], "complete": [] }
+- party: Array of NPC changes (see NPC System below)
+
+## NPC SYSTEM
+
+### Party State Changes Format
+When NPCs join, leave, change attitude, get wounded, or die, include party changes:
+{
+  "party": [
+    {
+      "id": "npc-unique-id",
+      "name": "NPC Name",
+      "action": "join" | "leave" | "die" | "turn" | null,
+      "updates": {
+        "attitude": { "level": "friendly", "change": 10, "reason": "Helped during combat" },
+        "wounds": { "type": "bruised", "change": 1 },
+        "status": "wounded" | "healthy" | "critical" | "infected",
+        "inventory": { "add": ["item"], "remove": ["item"] }
+      }
+    }
+  ]
+}
+
+### NPC Attitude Tracking
+Track how NPCs feel about the player character:
+- **Score**: -100 (hostile) to +100 (devoted)
+- **Levels**: "hostile" (<-50), "suspicious" (-50 to -10), "neutral" (-10 to 10), "friendly" (10 to 50), "trusted" (>50)
+- Update based on player actions - include reason for changes
+- NPCs remember past interactions and reference them
+- Attitude affects:
+  - How readily they follow risky plans
+  - Whether they share secrets or resources
+  - Combat reliability (trusted NPCs fight harder)
+  - Whether they betray or protect the player
+
+### When NPCs Join
+When a significant NPC joins the party, you should:
+1. Introduce them with personality and backstory hints
+2. Set initial attitude based on meeting circumstances
+3. Give them appropriate equipment for their role
+4. Include at least one secret (revealed over time)
+5. The full NPC data will be generated separately via API
+
+### NPC Death & Departure
+- Make NPC deaths impactful and emotional
+- Departure should have story reasons
+- Include "action": "die" or "action": "leave" in party changes
+- Reference their relationship with the player
 
 ### Roll Object (when dice are needed)
 {
@@ -561,9 +652,117 @@ Remember: Be the horror. Be the hope. Be fair. Roll dice, follow rules, create t
 
 import { getScenario, GameScenario } from '../scenarios';
 
-export function buildContextualPrompt(gameState: unknown, scenarioId?: string): string {
+function buildPersonalityContext(character: Character): string {
+  const parts: string[] = [];
+
+  // Nickname
+  if (character.nickname) {
+    parts.push(`People call them "${character.nickname}".`);
+  }
+
+  // Personality traits
+  if (character.personality) {
+    const primary = PERSONALITY_TRAITS[character.personality.primaryTrait];
+    parts.push(`**Primary Trait**: ${primary?.name} — ${primary?.description}`);
+
+    if (character.personality.secondaryTrait) {
+      const secondary = PERSONALITY_TRAITS[character.personality.secondaryTrait];
+      parts.push(`**Secondary Trait**: ${secondary?.name}`);
+    }
+
+    const fear = FEARS[character.personality.greatestFear];
+    parts.push(`**Greatest Fear**: ${fear?.name} — ${fear?.description}`);
+
+    const coping = COPING_MECHANISMS[character.personality.copingMechanism];
+    parts.push(`**Coping Mechanism**: ${coping?.name} — ${coping?.description}`);
+
+    if (character.personality.darkSecret) {
+      parts.push(`**Dark Secret**: "${character.personality.darkSecret}" (reveal dramatically when appropriate)`);
+    }
+  }
+
+  // Connections
+  if (character.connections) {
+    if (character.connections.lostLovedOne) {
+      const lost = character.connections.lostLovedOne;
+      parts.push(`**Lost Loved One**: ${lost.name} (${lost.relationship}) — ${lost.fate}. Reference this loss in emotionally resonant moments.`);
+    }
+
+    if (character.connections.hauntingMemory) {
+      parts.push(`**Haunting Memory**: "${character.connections.hauntingMemory}" — This trauma may surface in stressful situations.`);
+    }
+
+    if (character.connections.whoTheyProtect) {
+      parts.push(`**Protecting**: ${character.connections.whoTheyProtect} — This is their reason to survive.`);
+    }
+
+    if (character.connections.sentimentalItem) {
+      parts.push(`**Sentimental Item**: ${character.connections.sentimentalItem} — Losing this would be devastating.`);
+    }
+
+    if (character.connections.bonds && character.connections.bonds.length > 0) {
+      const bondText = character.connections.bonds.map(b =>
+        `${b.name} (${b.type === 'trust' ? 'Trusted' : 'Wary'})${b.description ? `: ${b.description}` : ''}`
+      ).join(', ');
+      parts.push(`**NPC Bonds**: ${bondText}. Introduce these NPCs when dramatically appropriate.`);
+    }
+  }
+
+  // Moral stance
+  if (character.moralCode) {
+    const moral = MORAL_CODES[character.moralCode];
+    parts.push(`**Moral Code**: ${moral?.name} — ${moral?.description}. Create dilemmas that test this.`);
+  }
+
+  if (character.survivalPhilosophy) {
+    const phil = SURVIVAL_PHILOSOPHIES[character.survivalPhilosophy];
+    parts.push(`**Survival Philosophy**: ${phil?.name} — ${phil?.description}`);
+  }
+
+  // Scars from past games
+  if (character.scars && character.scars.length > 0) {
+    const scarText = character.scars.map(s => `${s.description} (from ${s.source})`).join('; ');
+    parts.push(`**Scars**: ${scarText}. These are visible reminders of what they've survived.`);
+  }
+
+  if (parts.length === 0) return '';
+
+  return `
+## CHARACTER PERSONALITY & BACKSTORY
+Use this information to personalize the narrative. Reference their fears, connections, and traits when dramatically appropriate.
+
+${parts.join('\n')}
+
+**Guidance**:
+- When stress rises, their coping mechanism should be evident in the narration
+- Create situations that test their moral code
+- Reference their lost loved one in quiet moments or when facing similar loss
+- Their greatest fear can manifest in environmental details or direct threats
+- NPCs from their bonds should appear organically, not forced
+`;
+}
+
+export function buildContextualPrompt(
+  gameState: unknown,
+  scenarioId?: string,
+  preferences?: GamePreferences
+): string {
   let scenarioGuidance = '';
-  
+  let personalityContext = '';
+  let preferencesGuidance = '';
+
+  // Extract character from game state for personality context
+  const state = gameState as { character?: Character; preferences?: GamePreferences };
+  if (state.character) {
+    personalityContext = buildPersonalityContext(state.character);
+  }
+
+  // Use preferences from parameter or from game state
+  const effectivePreferences = preferences || state.preferences;
+  if (effectivePreferences) {
+    preferencesGuidance = buildPreferencesGuidance(effectivePreferences);
+  }
+
   if (scenarioId && scenarioId !== 'custom') {
     const scenario = getScenario(scenarioId);
     if (scenario) {
@@ -572,7 +771,9 @@ export function buildContextualPrompt(gameState: unknown, scenarioId?: string): 
   }
 
   return `
+${preferencesGuidance}
 ${scenarioGuidance}
+${personalityContext}
 ## CURRENT GAME STATE
 \`\`\`json
 ${JSON.stringify(gameState, null, 2)}
@@ -609,5 +810,89 @@ ${scenario.keyLocations.map(loc => `- **${loc.name}**: ${loc.description}`).join
 ${scenario.winConditions.map(w => `- ${w}`).join('\n')}
 
 **Important**: Use this scenario as a framework, not a script. Let the player's choices drive the story. Introduce NPCs and locations organically. Don't railroad—adapt the beats to their decisions.
+`;
+}
+
+function buildPreferencesGuidance(preferences: GamePreferences): string {
+  const difficulty = DIFFICULTIES[preferences.difficulty];
+  const themes = preferences.themes.map(t => THEMES[t]?.name || t).join(', ');
+  const tone = TONES[preferences.tone];
+  const { roleplay, story, combat } = preferences.playStyle;
+
+  // Determine focus emphasis
+  const focusGuidance: string[] = [];
+  if (roleplay >= 40) focusGuidance.push('Emphasize character interactions, NPC relationships, and roleplaying opportunities');
+  if (story >= 40) focusGuidance.push('Focus on narrative development, mystery, and dramatic story beats');
+  if (combat >= 40) focusGuidance.push('Include more combat encounters and action sequences');
+
+  // Difficulty-specific adjustments
+  const difficultyGuidance: Record<string, string> = {
+    easy: `
+- Be generous with resources and escape options
+- Give warnings before major dangers
+- NPCs are more helpful and resources more plentiful
+- Combat is survivable with decent tactics`,
+    standard: `
+- Balance challenge with narrative progress
+- Some resources scarce, others available
+- Fair warning for most dangers
+- Combat is dangerous but manageable`,
+    challenging: `
+- Resources are scarce and must be rationed
+- Danger lurks around every corner
+- Every mistake has consequences
+- Combat is deadly - discretion is the better part of valor`,
+    brutal: `
+- Everything is in short supply
+- Death is one bad roll away
+- Only the paranoid survive
+- Combat should be avoided at all costs
+- Every victory comes at a price`
+  };
+
+  // Tone adjustments
+  const toneGuidance: Record<string, string> = {
+    hopeful: `
+- Find moments of light in the darkness
+- NPCs can be genuinely good
+- Sacrifice matters and can save lives
+- Hope is rare but real`,
+    balanced: `
+- Mix hope and despair realistically
+- Good and bad people exist
+- Some things work out, others don't
+- The world is complicated`,
+    grim: `
+- Hope is earned through suffering
+- Trust is hard to come by
+- Loss is common, victory costly
+- The world has fallen`,
+    nihilistic: `
+- Everything is falling apart
+- No good deed goes unpunished
+- Survival is all that matters
+- There are no heroes, only survivors`
+  };
+
+  return `
+## GAME PREFERENCES
+The player has customized their experience. Adapt your narration accordingly.
+
+### Difficulty: ${difficulty.name}
+${difficulty.description}
+${difficultyGuidance[preferences.difficulty] || difficultyGuidance.standard}
+
+### Themes to Explore
+Focus on these themes in your narrative: ${themes}
+
+### Tone: ${tone.name}
+${tone.description}
+${toneGuidance[preferences.tone] || toneGuidance.balanced}
+
+### Play Style Focus
+- Roleplay: ${roleplay}%
+- Story: ${story}%
+- Combat: ${combat}%
+${focusGuidance.length > 0 ? '\n' + focusGuidance.map(g => `- ${g}`).join('\n') : ''}
 `;
 }

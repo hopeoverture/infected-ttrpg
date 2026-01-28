@@ -16,6 +16,14 @@ export const CREATION_NARRATION = {
     text: "I'm trying to picture you. Describe yourself. The face that stares back from broken windows. The body that carries you through this hell.",
     subtitle: "Describe yourself..."
   },
+  psychology: {
+    text: "We all have demons. Things that haunt us. Things that drive us. What kind of person are you, really? What do you fear most? And how do you cope when the darkness closes in?",
+    subtitle: "What kind of person are you, really?"
+  },
+  connections: {
+    text: "Nobody survives alone. We carry the people we've lost with us. The ones we're fighting to protect. The memories that won't let go. Tell me about yours.",
+    subtitle: "Tell me about those you've lost..."
+  },
   attributes: {
     text: "Survival isn't just about strength. It's about knowing when to fight, when to run, when to think, and when to keep your nerve. Where do your strengths lie?",
     subtitle: "Where do your strengths lie?"

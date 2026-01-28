@@ -432,8 +432,8 @@ export default function SettingsPanel({
                 }`} />
               </button>
             </label>
-            
-            <label className="block">
+
+            <label className="block mb-3">
               <div className="flex justify-between mb-1">
                 <span className="text-sm">Volume</span>
                 <span className="text-sm text-muted">{Math.round(localSettings.soundVolume * 100)}%</span>
@@ -448,6 +448,52 @@ export default function SettingsPanel({
                 className="w-full"
               />
             </label>
+
+            {/* Test Sound Button */}
+            <button
+              type="button"
+              onClick={() => {
+                // Create a quick test sound using Web Audio API
+                try {
+                  const ctx = new AudioContext();
+                  const osc = ctx.createOscillator();
+                  const gain = ctx.createGain();
+
+                  osc.type = 'sine';
+                  osc.frequency.setValueAtTime(440, ctx.currentTime);
+                  osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.3);
+
+                  gain.gain.setValueAtTime(localSettings.soundVolume * 0.5, ctx.currentTime);
+                  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+                  osc.connect(gain);
+                  gain.connect(ctx.destination);
+
+                  osc.start();
+                  osc.stop(ctx.currentTime + 0.3);
+
+                  // Play a second tone for "infected growl" effect
+                  setTimeout(() => {
+                    const osc2 = ctx.createOscillator();
+                    const gain2 = ctx.createGain();
+                    osc2.type = 'sawtooth';
+                    osc2.frequency.setValueAtTime(150, ctx.currentTime);
+                    gain2.gain.setValueAtTime(localSettings.soundVolume * 0.3, ctx.currentTime);
+                    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                    osc2.connect(gain2);
+                    gain2.connect(ctx.destination);
+                    osc2.start();
+                    osc2.stop(ctx.currentTime + 0.5);
+                  }, 200);
+                } catch (e) {
+                  console.warn('Audio test failed:', e);
+                }
+              }}
+              disabled={!localSettings.soundEffectsEnabled}
+              className="w-full btn text-sm disabled:opacity-50"
+            >
+              🔊 Test Sound Effects
+            </button>
           </section>
 
           {/* Difficulty */}

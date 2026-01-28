@@ -1,5 +1,15 @@
 // INFECTED Web App - Core Types
 
+// Import enhanced types
+import type { FullNPC } from './types/full-npc';
+import type { GamePreferences } from './types/game-preferences';
+import type { FullGeneratedScenario } from './types/generated-scenario';
+
+// Re-export for convenience
+export type { FullNPC, NPCAttitude, NPCPersonality, NPCStatus, AttitudeLevel } from './types/full-npc';
+export type { GamePreferences, Difficulty, Theme, Tone, PlayStyleFocus } from './types/game-preferences';
+export type { ScenarioOption, FullGeneratedScenario, ScenarioLocation } from './types/generated-scenario';
+
 // Character Appearance Options
 export type AgeRange = 'young' | 'adult' | 'middle-aged' | 'older';
 export type BodyType = 'slight' | 'average' | 'athletic' | 'heavy';
@@ -36,6 +46,110 @@ export const DEFAULT_APPEARANCE: CharacterAppearance = {
   hairStyle: 'short',
   hairColor: 'brown',
   distinguishingFeatures: []
+};
+
+// Personality Types
+export type PersonalityTrait =
+  | 'cautious' | 'reckless' | 'compassionate' | 'ruthless'
+  | 'optimistic' | 'cynical' | 'leader' | 'loner'
+  | 'protective' | 'self-serving';
+
+export type Fear =
+  | 'turning' | 'losing-others' | 'isolation' | 'darkness'
+  | 'enclosed-spaces' | 'betrayal' | 'failure';
+
+export type CopingMechanism =
+  | 'humor' | 'isolation' | 'aggression' | 'denial'
+  | 'planning' | 'faith' | 'work' | 'hope';
+
+export type MoralCode =
+  | 'protector' | 'survivor-first' | 'communal' | 'pragmatist';
+
+export type SurvivalPhilosophy =
+  | 'lone-wolf' | 'build-community' | 'keep-moving' | 'fortify' | 'day-by-day';
+
+export interface CharacterPersonality {
+  primaryTrait: PersonalityTrait;
+  secondaryTrait?: PersonalityTrait;
+  greatestFear: Fear;
+  copingMechanism: CopingMechanism;
+  darkSecret?: string;
+}
+
+export interface LostLovedOne {
+  name: string;
+  relationship: string;
+  fate: 'dead' | 'turned' | 'missing';
+}
+
+export interface NPCBond {
+  name: string;
+  type: 'trust' | 'wary';
+  description?: string;
+}
+
+export interface CharacterConnections {
+  lostLovedOne?: LostLovedOne;
+  hauntingMemory?: string;
+  whoTheyProtect?: string;
+  sentimentalItem?: string;
+  bonds?: NPCBond[];
+}
+
+export interface CharacterScar {
+  description: string;
+  source: string;
+  earnedDay?: number;
+}
+
+// Display labels for personality options
+export const PERSONALITY_TRAITS: Record<PersonalityTrait, { name: string; description: string }> = {
+  'cautious': { name: 'Cautious', description: 'You think before you act, always weighing the risks' },
+  'reckless': { name: 'Reckless', description: 'You act first and deal with consequences later' },
+  'compassionate': { name: 'Compassionate', description: 'You feel deeply for others and their suffering' },
+  'ruthless': { name: 'Ruthless', description: 'You do what needs to be done, no matter the cost' },
+  'optimistic': { name: 'Optimistic', description: 'You believe things will get better, somehow' },
+  'cynical': { name: 'Cynical', description: 'You expect the worst and are rarely disappointed' },
+  'leader': { name: 'Leader', description: 'You naturally take charge and make decisions' },
+  'loner': { name: 'Loner', description: 'You work best alone and trust yourself most' },
+  'protective': { name: 'Protective', description: 'You put others\' safety before your own' },
+  'self-serving': { name: 'Self-Serving', description: 'Your survival comes first, always' }
+};
+
+export const FEARS: Record<Fear, { name: string; description: string }> = {
+  'turning': { name: 'Turning', description: 'Becoming one of them terrifies you more than death' },
+  'losing-others': { name: 'Losing Others', description: 'Watching people you care about die or turn' },
+  'isolation': { name: 'Isolation', description: 'Being completely alone with no one left' },
+  'darkness': { name: 'Darkness', description: 'What lurks in the shadows you cannot see' },
+  'enclosed-spaces': { name: 'Enclosed Spaces', description: 'Being trapped with no way out' },
+  'betrayal': { name: 'Betrayal', description: 'Being stabbed in the back by someone you trusted' },
+  'failure': { name: 'Failure', description: 'Not being good enough when it matters most' }
+};
+
+export const COPING_MECHANISMS: Record<CopingMechanism, { name: string; description: string }> = {
+  'humor': { name: 'Humor', description: 'You joke to keep the darkness at bay' },
+  'isolation': { name: 'Isolation', description: 'You withdraw into yourself to process' },
+  'aggression': { name: 'Aggression', description: 'You channel pain into action and violence' },
+  'denial': { name: 'Denial', description: 'You pretend things are fine until they aren\'t' },
+  'planning': { name: 'Planning', description: 'You obsess over preparation and contingencies' },
+  'faith': { name: 'Faith', description: 'You hold onto belief in something greater' },
+  'work': { name: 'Work', description: 'You stay busy to avoid thinking too much' },
+  'hope': { name: 'Hope', description: 'You cling to the belief that tomorrow will be better' }
+};
+
+export const MORAL_CODES: Record<MoralCode, { name: string; description: string }> = {
+  'protector': { name: 'Protector', description: 'Defend the innocent at any cost' },
+  'survivor-first': { name: 'Survivor First', description: 'Your survival trumps all other concerns' },
+  'communal': { name: 'Communal', description: 'The group\'s needs outweigh individual wants' },
+  'pragmatist': { name: 'Pragmatist', description: 'Do what works, morality is a luxury' }
+};
+
+export const SURVIVAL_PHILOSOPHIES: Record<SurvivalPhilosophy, { name: string; description: string }> = {
+  'lone-wolf': { name: 'Lone Wolf', description: 'Travel light, trust no one, keep moving' },
+  'build-community': { name: 'Build Community', description: 'Safety in numbers, rebuild society' },
+  'keep-moving': { name: 'Keep Moving', description: 'Never stay in one place too long' },
+  'fortify': { name: 'Fortify', description: 'Find a defensible position and hold it' },
+  'day-by-day': { name: 'Day by Day', description: 'Don\'t plan too far ahead, survive today' }
 };
 
 export type Background = 
@@ -136,6 +250,7 @@ export interface Item {
 export interface Character {
   id: string;
   name: string;
+  nickname?: string;
   background: Background;
   motivation: string;
   portraitUrl?: string;
@@ -155,6 +270,60 @@ export interface Character {
   carryingCapacity: number;
   food: number;
   water: number;
+  // Personality & psychology
+  personality?: CharacterPersonality;
+  // Connections & relationships
+  connections?: CharacterConnections;
+  // Moral stance
+  moralCode?: MoralCode;
+  survivalPhilosophy?: SurvivalPhilosophy;
+  // Progression (per DESIGN.md)
+  scars?: CharacterScar[];
+  // Voice settings for multi-voice audio
+  voiceId?: string;
+}
+
+// Standalone character template (without game state like wounds/inventory)
+export interface CharacterTemplate {
+  id: string;
+  userId: string;
+  name: string;
+  nickname?: string;
+  background: Background;
+  motivation: string;
+  portraitUrl?: string;
+  appearance?: CharacterAppearance;
+  artStyle?: ArtStyle;
+  attributes: Attributes;
+  skills: Skills;
+  personality?: CharacterPersonality;
+  connections?: CharacterConnections;
+  moralCode?: MoralCode;
+  survivalPhilosophy?: SurvivalPhilosophy;
+  // Voice settings for multi-voice audio
+  voiceId?: string;
+  // Progression
+  skillPointsAvailable: number;
+  attributePointsAvailable: number;
+  scars: CharacterScar[];
+  sessionsSurvived: number;
+  // Metadata
+  timesUsed: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Summary for list views
+export interface CharacterSummary {
+  id: string;
+  name: string;
+  nickname?: string;
+  background: Background;
+  portraitUrl?: string;
+  timesUsed: number;
+  sessionsSurvived: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Location {
@@ -167,12 +336,21 @@ export interface Location {
   sceneImageUrl?: string;
 }
 
+// Legacy NPC interface for backwards compatibility
 export interface NPC {
   id: string;
   name: string;
   relationship: 'hostile' | 'suspicious' | 'neutral' | 'friendly' | 'trusted';
   status: string;
   isAlive: boolean;
+}
+
+// Party member can be either legacy NPC or FullNPC
+export type PartyMember = NPC | FullNPC;
+
+// Type guard to check if party member is a FullNPC
+export function isFullNPC(member: PartyMember): member is FullNPC {
+  return 'attributes' in member && 'attitude' in member;
 }
 
 export interface Objective {
@@ -227,24 +405,28 @@ export interface GameState {
   title: string;
   createdAt: Date;
   updatedAt: Date;
-  
+
   // Character
   character: Character;
-  
+
   // World
   day: number;
   time: TimeOfDay;
   location: Location;
   threat: number;
   threatState: ThreatState;
-  
-  // Party
-  party: NPC[];
-  
+
+  // Party - can contain both legacy NPC and FullNPC
+  party: PartyMember[];
+
   // Story
   objectives: Objective[];
-  scenarioId?: string; // Premade scenario ID for story guidance
-  
+  scenarioId?: string; // Premade scenario ID for story guidance (legacy)
+
+  // New: Generated scenario and preferences
+  generatedScenario?: FullGeneratedScenario;
+  preferences?: GamePreferences;
+
   // Session
   messages: Message[];
   combatState: CombatState | null;
@@ -389,6 +571,28 @@ export const DEFAULT_SKILLS: Skills = {
 };
 
 // GM API State Changes - shared between API route and hooks
+// NPC update in state changes
+export interface NPCStateChange {
+  id: string;
+  name: string;
+  // For new NPCs joining the party - include full data
+  fullData?: FullNPC;
+  // For updating existing NPCs
+  updates?: {
+    attitude?: { level: string; change: number; reason: string };
+    wounds?: { type: 'bruised' | 'bleeding' | 'broken' | 'critical'; change: number };
+    status?: string;
+    inventory?: { add?: string[]; remove?: string[] };
+    secrets?: { reveal: string[] };
+    goals?: { add?: string[]; remove?: string[] };
+  };
+  // Legacy fields for backwards compatibility
+  status?: string;
+  relationship?: string;
+  // NPC actions
+  action?: 'join' | 'leave' | 'die' | 'turn';
+}
+
 export interface GMStateChanges {
   threat?: number | null;
   threatState?: ThreatState | null;
@@ -408,5 +612,5 @@ export interface GMStateChanges {
   day?: number | null;
   inventory?: { add?: string[]; remove?: string[] } | null;
   objectives?: { add?: string[]; complete?: string[] } | null;
-  party?: Array<{ id: string; name: string; status?: string; relationship?: string }> | null;
+  party?: NPCStateChange[] | null;
 }

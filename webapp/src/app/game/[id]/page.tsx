@@ -26,9 +26,13 @@ import DeathSceneModal from '@/components/game/DeathSceneModal';
 // Hooks
 import { useGameSession, GMApiResponse } from '@/hooks/useGameSession';
 import { useAudioNarration } from '@/hooks/useAudioNarration';
+import { useMultiVoiceNarration } from '@/hooks/useMultiVoiceNarration';
 import { useGameAudio } from '@/hooks/useGameAudio';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
+
+// Types
+import { DialogSegment, DEFAULT_GM_VOICE } from '@/lib/types/voice';
 
 // Game engine
 import { rollBreakingPoint, rollInfectionCheck } from '@/lib/game-engine/dice';
@@ -58,7 +62,8 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null);
   const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
   const [currentNarrationText, setCurrentNarrationText] = useState<string | null>(null);
-  
+  const [latestDialogSegments, setLatestDialogSegments] = useState<DialogSegment[] | null>(null);
+
   // Modal State
   const [breakingPointOpen, setBreakingPointOpen] = useState(false);
   const [infectionCheckOpen, setInfectionCheckOpen] = useState(false);
@@ -97,7 +102,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     }
   });
 
-  // Audio Narration Hook (TTS)
+  // Audio Narration Hook (TTS) - single voice fallback
   const {
     isMuted,
     toggleMute,
@@ -106,6 +111,15 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     stopAudio,
     togglePlayback,
   } = useAudioNarration();
+
+  // Multi-Voice Narration Hook (TTS with different voices for NPCs)
+  const multiVoice = useMultiVoiceNarration({
+    gmVoiceId: gameState?.preferences?.gmVoiceId || DEFAULT_GM_VOICE,
+    playerVoiceId: gameState?.character?.voiceId,
+    playerGender: gameState?.character?.appearance?.gender,
+    party: gameState?.party || [],
+    enabled: !isMuted
+  });
 
   // Game Audio Hook (Music & SFX)
   const gameAudio = useGameAudio({
@@ -139,12 +153,18 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     onQuickAction: (index) => quickActionsRef.current?.triggerAction(index),
     onToggleAudio: () => {
       // Toggle current playing audio or replay last GM message
-      if (audioState.isPlaying) {
+      if (audioState.isPlaying || multiVoice.state.isPlaying) {
         stopAudio();
+        multiVoice.stop();
       } else if (gameState?.messages.length) {
         const lastGM = [...gameState.messages].reverse().find(m => m.role === 'gm');
         if (lastGM) {
-          playAudio(lastGM.content, lastGM.id);
+          // Use multi-voice if we have dialog segments, otherwise single-voice
+          if (latestDialogSegments && latestDialogSegments.length > 0) {
+            multiVoice.playNarrative(lastGM.content, latestDialogSegments);
+          } else {
+            playAudio(lastGM.content, lastGM.id);
+          }
         }
       }
     },
@@ -162,6 +182,13 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     // Process audio cues (music and sound effects)
     if (response.audio) {
       gameAudio.processAudioCues(response.audio);
+    }
+
+    // Store dialog segments for multi-voice playback
+    if (response.dialogSegments && response.dialogSegments.length > 0) {
+      setLatestDialogSegments(response.dialogSegments);
+    } else {
+      setLatestDialogSegments(null);
     }
 
     // Check for breaking point
@@ -312,19 +339,25 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   // Auto-play new GM messages and update subtitle text
   useEffect(() => {
     if (!gameState?.messages?.length || isMuted) return;
-    
+
     const lastMessage = gameState.messages[gameState.messages.length - 1];
-    
+
     if (
       lastMessage &&
-      lastMessage.role === 'gm' && 
+      lastMessage.role === 'gm' &&
       lastMessage.id !== lastGMMessageIdRef.current
     ) {
       lastGMMessageIdRef.current = lastMessage.id;
       setCurrentNarrationText(lastMessage.content); // eslint-disable-line react-hooks/set-state-in-effect
-      playAudio(lastMessage.content, lastMessage.id);
+
+      // Use multi-voice if we have dialog segments, otherwise single-voice
+      if (latestDialogSegments && latestDialogSegments.length > 0) {
+        multiVoice.playNarrative(lastMessage.content, latestDialogSegments);
+      } else {
+        playAudio(lastMessage.content, lastMessage.id);
+      }
     }
-  }, [gameState?.messages, isMuted, playAudio]);
+  }, [gameState?.messages, isMuted, playAudio, latestDialogSegments, multiVoice]);
 
   // Update subtitle text based on current audio state
   // This is intentional state synchronization from audio state changes
@@ -432,12 +465,17 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
   // Handle submit action
   const handleSubmit = useCallback(async (action: string) => {
     if (!action.trim() || !gameState || isLoading) return;
-    
+
+    // Initialize audio context on first user interaction (required by Web Audio API)
+    gameAudio.initAudio();
+
+    // Stop any playing audio (both single-voice and multi-voice)
     stopAudio();
+    multiVoice.stop();
     setInput('');
     await submitAction(action);
     markDirty();
-  }, [gameState, isLoading, stopAudio, submitAction, markDirty]);
+  }, [gameState, isLoading, stopAudio, multiVoice, submitAction, markDirty, gameAudio]);
 
   // Handle quick action trigger
   const handleQuickAction = useCallback((action: string) => {
@@ -499,15 +537,36 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
             <SaveIndicator status={saveStatus} lastSaved={lastSaved} />
           </div>
           <div className="flex items-center gap-3">
+            {/* Audio Status Indicator */}
+            {gameAudio.isPlaying && !gameAudio.isMuted && (
+              <div
+                className="flex items-center gap-1.5 text-xs text-gold"
+                title={`Music: ${gameAudio.currentMusic || 'ambient'}`}
+              >
+                <span className="flex gap-0.5">
+                  <span className="w-0.5 h-3 bg-gold rounded-full animate-sound-wave" style={{ animationDelay: '0ms' }} />
+                  <span className="w-0.5 h-3 bg-gold rounded-full animate-sound-wave" style={{ animationDelay: '150ms' }} />
+                  <span className="w-0.5 h-3 bg-gold rounded-full animate-sound-wave" style={{ animationDelay: '300ms' }} />
+                </span>
+              </div>
+            )}
             <MuteToggle isMuted={isMuted} onToggle={toggleMute} />
-            <button 
+            <button
+              onClick={() => gameAudio.toggleMute()}
+              className={`text-sm transition-colors ${gameAudio.isMuted ? 'text-muted' : 'text-secondary hover:text-primary'}`}
+              aria-label={gameAudio.isMuted ? 'Unmute sound effects' : 'Mute sound effects'}
+              title={gameAudio.isMuted ? 'Sound effects muted' : 'Sound effects on'}
+            >
+              {gameAudio.isMuted ? '🔇' : '🔊'}
+            </button>
+            <button
               onClick={() => setSettingsOpen(true)}
               className="text-secondary hover:text-primary transition-colors text-sm"
               aria-label="Open game settings"
             >
               ⚙️
             </button>
-            <button 
+            <button
               onClick={() => setShowHelp(true)}
               className="text-secondary hover:text-primary transition-colors text-sm"
               aria-label="Keyboard shortcuts"

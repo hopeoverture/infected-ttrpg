@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  Character,
   Wounds,
   WoundCapacity,
   Item,
-  ThreatState,
   GMStateChanges,
   Objective,
   TimeOfDay
@@ -136,7 +134,7 @@ describe('Game State Mutations', () => {
       critical: false
     };
 
-    const defaultCapacity: WoundCapacity = {
+    const _defaultCapacity: WoundCapacity = {
       bruised: 4,
       bleeding: 3,
       broken: 2,
@@ -222,7 +220,7 @@ describe('Game State Mutations', () => {
 
     it('handles setting stress to exact value', () => {
       // This simulates the GM setting a specific stress level
-      const currentStress = 5;
+      const _currentStress = 5;
       const newStress = 7;
       const result = Math.max(0, Math.min(10, newStress));
       expect(result).toBe(7);

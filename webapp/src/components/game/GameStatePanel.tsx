@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { GameState, ThreatState } from '@/lib/types';
+import { GameState, ThreatState, isFullNPC } from '@/lib/types';
 
 interface GameStatePanelProps {
   gameState: GameState;
@@ -171,9 +171,11 @@ function PartyList({ party }: { party: GameState['party'] }) {
                 {npc.name}
                 {!npc.isAlive && <span className="text-danger ml-1">(Dead)</span>}
               </div>
-              <div className="text-xs text-muted">{npc.status}</div>
+              <div className="text-xs text-muted">
+                {isFullNPC(npc) ? npc.statusDetails || npc.status : npc.status}
+              </div>
               <div className="text-xs text-muted capitalize">
-                {npc.relationship}
+                {isFullNPC(npc) ? npc.attitude.level : npc.relationship}
               </div>
             </div>
           </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GM_SYSTEM_PROMPT, buildContextualPrompt } from '@/lib/ai/gm-prompt';
 import { rollDicePool, rollOpposed, rollInfectionCheck, rollBreakingPoint } from '@/lib/game-engine/dice';
 import { GameState, RollResult, AttributeName, SkillName, GMStateChanges } from '@/lib/types';
+import { DialogSegment } from '@/lib/types/voice';
 import {
   checkRateLimit,
   RATE_LIMITS,
@@ -26,6 +27,11 @@ interface AudioCues {
   soundEffects?: string[];
 }
 
+interface SuggestedOption {
+  text: string;
+  type: 'exploration' | 'social' | 'combat' | 'stealth' | 'other';
+}
+
 interface GMResponse {
   narrative: string;
   stateChanges: GMStateChanges;
@@ -36,6 +42,8 @@ interface GMResponse {
   sceneChanged?: boolean;
   sceneDescription?: string | null;
   audio?: AudioCues | null;
+  dialogSegments?: DialogSegment[];
+  suggestedOptions?: SuggestedOption[];
 }
 
 // Execute a dice roll based on GM's request
@@ -412,6 +420,8 @@ export async function POST(request: NextRequest) {
       sceneChanged: gmResponse.sceneChanged,
       sceneDescription: gmResponse.sceneDescription,
       audio: gmResponse.audio, // Music and sound effect cues
+      dialogSegments: gmResponse.dialogSegments, // Multi-voice segments
+      suggestedOptions: gmResponse.suggestedOptions, // Player action options
       rawRollRequest: gmResponse.roll, // Include original request for follow-up
     });
     

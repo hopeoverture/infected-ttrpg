@@ -3,11 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  Background, 
-  BACKGROUNDS, 
-  Attributes, 
-  Skills, 
+import {
+  Background,
+  BACKGROUNDS,
+  Attributes,
+  Skills,
   DEFAULT_SKILLS,
   DEFAULT_APPEARANCE,
   CharacterAppearance,
@@ -15,15 +15,37 @@ import {
   SkillName,
   AgeRange,
   BodyType,
-  Gender
+  Gender,
+  PersonalityTrait,
+  Fear,
+  CopingMechanism,
+  MoralCode,
+  SurvivalPhilosophy,
+  CharacterPersonality,
+  CharacterConnections,
+  LostLovedOne,
+  NPCBond,
+  Character,
+  PERSONALITY_TRAITS,
+  FEARS,
+  COPING_MECHANISMS,
+  MORAL_CODES,
+  SURVIVAL_PHILOSOPHIES
 } from '@/lib/types';
+import { GamePreferences, DEFAULT_PREFERENCES } from '@/lib/types/game-preferences';
+import { FullGeneratedScenario } from '@/lib/types/generated-scenario';
+import { createCharacter } from '@/lib/supabase/characters';
 import { createGame } from '@/lib/supabase/games';
 import CharacterPortrait from '@/components/game/CharacterPortrait';
 import CreationNarrationUI from '@/components/game/CreationNarrationUI';
+import PreferencesStep from '@/components/game/PreferencesStep';
+import ScenarioSelectionStep from '@/components/game/ScenarioSelectionStep';
+import CharacterVoiceStep from '@/components/game/CharacterVoiceStep';
+import GMVoiceStep from '@/components/game/GMVoiceStep';
 import { useCreationNarration } from '@/hooks/useCreationNarration';
-import { SCENARIOS, getScenariosByTimeframe, getDifficultyStyle, GameScenario } from '@/lib/scenarios';
+// Note: Old premade scenarios still available in '@/lib/scenarios' for reference/existing games
 
-type CreationStep = 'background' | 'appearance' | 'attributes' | 'skills' | 'story';
+type CreationStep = 'background' | 'appearance' | 'psychology' | 'connections' | 'attributes' | 'skills' | 'voice' | 'preferences' | 'gm-voice' | 'scenario';
 
 const SKILL_GROUPS = {
   grit: ['brawl', 'endure', 'athletics'] as SkillName[],
@@ -161,18 +183,43 @@ export default function NewGame() {
   
   // Character data
   const [name, setName] = useState('');
+  const [nickname, setNickname] = useState('');
   const [background, setBackground] = useState<Background | null>(null);
   const [appearance, setAppearance] = useState<CharacterAppearance>({ ...DEFAULT_APPEARANCE });
   const [artStyle, setArtStyle] = useState<ArtStyle>('cinematic');
   const [attributes, setAttributes] = useState<Attributes>({ grit: 3, reflex: 3, wits: 3, nerve: 3 });
   const [skills, setSkills] = useState<Skills>({ ...DEFAULT_SKILLS });
   const [motivation, setMotivation] = useState('');
-  const [selectedScenario, setSelectedScenario] = useState<GameScenario | null>(SCENARIOS[0] || null);
-  const [customScenario, setCustomScenario] = useState('');
-  const [scenarioTab, setScenarioTab] = useState<'premade' | 'custom'>('premade');
+
+  // Game preferences and generated scenario
+  const [preferences, setPreferences] = useState<GamePreferences>(DEFAULT_PREFERENCES);
+  const [generatedScenario, setGeneratedScenario] = useState<FullGeneratedScenario | null>(null);
+  const [, setGenerationId] = useState<string | null>(null); // Stored for potential future use
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
+
+  // Personality & psychology
+  const [primaryTrait, setPrimaryTrait] = useState<PersonalityTrait | null>(null);
+  const [secondaryTrait, setSecondaryTrait] = useState<PersonalityTrait | null>(null);
+  const [greatestFear, setGreatestFear] = useState<Fear | null>(null);
+  const [copingMechanism, setCopingMechanism] = useState<CopingMechanism | null>(null);
+  const [darkSecret, setDarkSecret] = useState('');
+
+  // Connections & relationships
+  const [lostLovedOne, setLostLovedOne] = useState<LostLovedOne | null>(null);
+  const [hauntingMemory, setHauntingMemory] = useState('');
+  const [whoTheyProtect, setWhoTheyProtect] = useState('');
+  const [sentimentalItem, setSentimentalItem] = useState('');
+  const [trustedNPC, setTrustedNPC] = useState<NPCBond | null>(null);
+  const [waryNPC, setWaryNPC] = useState<NPCBond | null>(null);
+
+  // Moral stance
+  const [moralCode, setMoralCode] = useState<MoralCode | null>(null);
+  const [survivalPhilosophy, setSurvivalPhilosophy] = useState<SurvivalPhilosophy | null>(null);
+
+  // Voice settings
+  const [characterVoiceId, setCharacterVoiceId] = useState<string | null>(null);
 
   const attributePoints = 12 - (attributes.grit + attributes.reflex + attributes.wits + attributes.nerve);
   const skillPoints = 12 - Object.values(skills).reduce((a, b) => a + b, 0);
@@ -223,18 +270,26 @@ export default function NewGame() {
         return name.trim().length > 0 && background !== null;
       case 'appearance':
         return true; // Appearance is optional, all have defaults
+      case 'psychology':
+        return primaryTrait !== null && greatestFear !== null && copingMechanism !== null;
+      case 'connections':
+        return true; // All connections are optional
       case 'attributes':
         return attributePoints === 0;
       case 'skills':
-        return skillPoints === 0;
-      case 'story':
-        return motivation.trim().length > 0 && (
-          scenarioTab === 'premade' ? selectedScenario !== null : customScenario.trim().length > 0
-        );
+        return skillPoints === 0 && motivation.trim().length > 0;
+      case 'voice':
+        return true; // Voice is optional, default will be used
+      case 'preferences':
+        return preferences.themes.length > 0;
+      case 'gm-voice':
+        return true; // GM voice is optional, default will be used
+      case 'scenario':
+        return generatedScenario !== null; // Must select a generated scenario
     }
   };
 
-  const STEPS: CreationStep[] = ['background', 'appearance', 'attributes', 'skills', 'story'];
+  const STEPS: CreationStep[] = ['background', 'appearance', 'psychology', 'connections', 'attributes', 'skills', 'voice', 'preferences', 'gm-voice', 'scenario'];
 
   const nextStep = () => {
     const currentIndex = STEPS.indexOf(step);
@@ -252,27 +307,123 @@ export default function NewGame() {
     }
   };
 
+  // Build personality object from state
+  const buildPersonality = (): CharacterPersonality | undefined => {
+    if (!primaryTrait || !greatestFear || !copingMechanism) return undefined;
+    return {
+      primaryTrait,
+      secondaryTrait: secondaryTrait || undefined,
+      greatestFear,
+      copingMechanism,
+      darkSecret: darkSecret || undefined
+    };
+  };
+
+  // Build connections object from state
+  const buildConnections = (): CharacterConnections | undefined => {
+    const bonds: NPCBond[] = [];
+    if (trustedNPC?.name) bonds.push(trustedNPC);
+    if (waryNPC?.name) bonds.push(waryNPC);
+
+    const hasAnyConnection = lostLovedOne?.name || hauntingMemory || whoTheyProtect || sentimentalItem || bonds.length > 0;
+    if (!hasAnyConnection) return undefined;
+
+    return {
+      lostLovedOne: lostLovedOne?.name ? lostLovedOne : undefined,
+      hauntingMemory: hauntingMemory || undefined,
+      whoTheyProtect: whoTheyProtect || undefined,
+      sentimentalItem: sentimentalItem || undefined,
+      bonds: bonds.length > 0 ? bonds : undefined
+    };
+  };
+
+  // Build full character object for scenario generation
+  const buildCharacter = (): Character => {
+    return {
+      name,
+      nickname: nickname || undefined,
+      background: background || 'civilian',
+      attributes,
+      skills,
+      motivation,
+      appearance,
+      artStyle,
+      personality: buildPersonality(),
+      connections: buildConnections(),
+      moralCode: moralCode || undefined,
+      survivalPhilosophy: survivalPhilosophy || undefined,
+      portraitUrl: portraitUrl || undefined,
+      voiceId: characterVoiceId || undefined
+    } as Character;
+  };
+
+  // Handle scenario selection from ScenarioSelectionStep
+  const handleScenarioSelected = (scenario: FullGeneratedScenario, genId: string) => {
+    setGeneratedScenario(scenario);
+    setGenerationId(genId);
+  };
+
+  const saveCharacterOnly = async () => {
+    if (!background || !primaryTrait || !greatestFear || !copingMechanism) return;
+
+    narration.stop();
+    setIsCreating(true);
+    setError(null);
+
+    try {
+      const characterId = await createCharacter({
+        name,
+        nickname: nickname || undefined,
+        background,
+        attributes,
+        skills,
+        motivation,
+        portraitUrl: portraitUrl || undefined,
+        appearance,
+        artStyle,
+        personality: buildPersonality(),
+        connections: buildConnections(),
+        moralCode: moralCode || undefined,
+        survivalPhilosophy: survivalPhilosophy || undefined,
+        voiceId: characterVoiceId || undefined
+      });
+
+      router.push(`/characters/${characterId}`);
+    } catch (err) {
+      console.error('Failed to save character:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save character. Please try again.');
+      setIsCreating(false);
+    }
+  };
+
   const startGame = async () => {
-    if (!background) return;
-    
+    if (!background || !generatedScenario) return;
+
     // Stop any narration before starting
     narration.stop();
-    
+
     setIsCreating(true);
     setError(null);
 
     try {
       const gameId = await createGame({
         name,
+        nickname: nickname || undefined,
         background,
         attributes,
         skills,
         motivation,
-        scenario: scenarioTab === 'custom' ? 'custom' : (selectedScenario?.id || 'day-one-classic'),
-        customScenario: scenarioTab === 'custom' ? customScenario : undefined,
+        scenario: 'generated',
+        generatedScenario,
+        preferences,
         portraitUrl: portraitUrl || undefined,
         appearance,
-        artStyle
+        artStyle,
+        personality: buildPersonality(),
+        connections: buildConnections(),
+        moralCode: moralCode || undefined,
+        survivalPhilosophy: survivalPhilosophy || undefined,
+        voiceId: characterVoiceId || undefined
       });
 
       router.push(`/game/${gameId}`);
@@ -347,9 +498,14 @@ export default function NewGame() {
         <div className="text-center text-xs text-muted mt-2">
           {step === 'background' && 'Identity'}
           {step === 'appearance' && 'Appearance'}
+          {step === 'psychology' && 'Psychology'}
+          {step === 'connections' && 'Connections'}
           {step === 'attributes' && 'Attributes'}
           {step === 'skills' && 'Skills'}
-          {step === 'story' && 'Story'}
+          {step === 'voice' && 'Character Voice'}
+          {step === 'preferences' && 'Preferences'}
+          {step === 'gm-voice' && 'GM Voice'}
+          {step === 'scenario' && 'Scenario'}
         </div>
       </div>
 
@@ -361,16 +517,29 @@ export default function NewGame() {
             <div className="panel mb-8">
               <h2 className="text-2xl font-bold text-center mb-6">WHO ARE YOU?</h2>
               
-              <div className="mb-6">
-                <label className="panel-label">Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter your character's name"
-                  className="input"
-                  maxLength={30}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="panel-label">Name</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter your character's name"
+                    className="input"
+                    maxLength={30}
+                  />
+                </div>
+                <div>
+                  <label className="panel-label">Nickname <span className="text-muted">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="What do people call you?"
+                    className="input"
+                    maxLength={20}
+                  />
+                </div>
               </div>
 
               <div>
@@ -510,6 +679,8 @@ export default function NewGame() {
                       value={appearance.hairStyle}
                       onChange={(e) => updateAppearance('hairStyle', e.target.value)}
                       className="input"
+                      title="Hair style"
+                      aria-label="Hair style"
                     >
                       {HAIR_STYLES.map((style) => (
                         <option key={style} value={style}>{style}</option>
@@ -545,6 +716,8 @@ export default function NewGame() {
                         value={appearance.facialHair || 'None'}
                         onChange={(e) => updateAppearance('facialHair', e.target.value)}
                         className="input"
+                        title="Facial hair style"
+                        aria-label="Facial hair style"
                       >
                         {FACIAL_HAIR_OPTIONS.map((option) => (
                           <option key={option} value={option}>{option}</option>
@@ -638,7 +811,269 @@ export default function NewGame() {
           </div>
         )}
 
-        {/* Step 3: Attributes */}
+        {/* Step 3: Psychology */}
+        {step === 'psychology' && (
+          <div className="animate-fade-in">
+            <div className="panel mb-8">
+              <h2 className="text-2xl font-bold text-center mb-2">PSYCHOLOGY</h2>
+              <p className="text-center text-secondary mb-6">
+                What drives you? What haunts you?
+              </p>
+
+              <div className="space-y-6">
+                {/* Primary Trait */}
+                <div>
+                  <label className="panel-label">Primary Personality Trait</label>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                    {(Object.keys(PERSONALITY_TRAITS) as PersonalityTrait[]).map((trait) => (
+                      <button
+                        key={trait}
+                        onClick={() => setPrimaryTrait(trait)}
+                        className={`p-3 rounded-lg border transition-all text-left ${
+                          primaryTrait === trait
+                            ? 'border-gold bg-gold/10'
+                            : 'border-subtle hover:border-medium'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">{PERSONALITY_TRAITS[trait].name}</div>
+                        <div className="text-xs text-muted line-clamp-2">{PERSONALITY_TRAITS[trait].description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Secondary Trait */}
+                <div>
+                  <label className="panel-label">Secondary Trait <span className="text-muted">(optional)</span></label>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                    {(Object.keys(PERSONALITY_TRAITS) as PersonalityTrait[])
+                      .filter(t => t !== primaryTrait)
+                      .map((trait) => (
+                        <button
+                          key={trait}
+                          onClick={() => setSecondaryTrait(secondaryTrait === trait ? null : trait)}
+                          className={`p-3 rounded-lg border transition-all text-left ${
+                            secondaryTrait === trait
+                              ? 'border-gold bg-gold/10'
+                              : 'border-subtle hover:border-medium'
+                          }`}
+                        >
+                          <div className="font-medium text-sm">{PERSONALITY_TRAITS[trait].name}</div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Greatest Fear */}
+                <div>
+                  <label className="panel-label">Greatest Fear</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {(Object.keys(FEARS) as Fear[]).map((fear) => (
+                      <button
+                        key={fear}
+                        onClick={() => setGreatestFear(fear)}
+                        className={`p-3 rounded-lg border transition-all text-left ${
+                          greatestFear === fear
+                            ? 'border-danger bg-danger/10'
+                            : 'border-subtle hover:border-medium'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">{FEARS[fear].name}</div>
+                        <div className="text-xs text-muted line-clamp-2">{FEARS[fear].description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Coping Mechanism */}
+                <div>
+                  <label className="panel-label">How do you cope?</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {(Object.keys(COPING_MECHANISMS) as CopingMechanism[]).map((coping) => (
+                      <button
+                        key={coping}
+                        onClick={() => setCopingMechanism(coping)}
+                        className={`p-3 rounded-lg border transition-all text-left ${
+                          copingMechanism === coping
+                            ? 'border-gold bg-gold/10'
+                            : 'border-subtle hover:border-medium'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">{COPING_MECHANISMS[coping].name}</div>
+                        <div className="text-xs text-muted line-clamp-2">{COPING_MECHANISMS[coping].description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dark Secret */}
+                <div>
+                  <label className="panel-label">Dark Secret <span className="text-muted">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={darkSecret}
+                    onChange={(e) => setDarkSecret(e.target.value)}
+                    placeholder="Something you've never told anyone..."
+                    className="input"
+                    maxLength={150}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Connections */}
+        {step === 'connections' && (
+          <div className="animate-fade-in">
+            <div className="panel mb-8">
+              <h2 className="text-2xl font-bold text-center mb-2">CONNECTIONS</h2>
+              <p className="text-center text-secondary mb-6">
+                Who did you lose? Who keeps you going?
+              </p>
+
+              <div className="space-y-6">
+                {/* Lost Loved One */}
+                <div className="p-4 bg-card rounded-lg border border-subtle">
+                  <label className="panel-label">Lost Loved One <span className="text-muted">(optional)</span></label>
+                  <p className="text-xs text-muted mb-3">Someone taken by the outbreak</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      value={lostLovedOne?.name || ''}
+                      onChange={(e) => setLostLovedOne(prev => ({
+                        name: e.target.value,
+                        relationship: prev?.relationship || 'spouse',
+                        fate: prev?.fate || 'dead'
+                      }))}
+                      placeholder="Their name"
+                      className="input"
+                      maxLength={30}
+                    />
+                    <select
+                      value={lostLovedOne?.relationship || ''}
+                      onChange={(e) => setLostLovedOne(prev => prev ? { ...prev, relationship: e.target.value } : null)}
+                      className="input"
+                      disabled={!lostLovedOne?.name}
+                      title="Relationship to lost loved one"
+                      aria-label="Relationship to lost loved one"
+                    >
+                      <option value="">Relationship</option>
+                      <option value="spouse">Spouse/Partner</option>
+                      <option value="child">Child</option>
+                      <option value="parent">Parent</option>
+                      <option value="sibling">Sibling</option>
+                      <option value="friend">Close Friend</option>
+                      <option value="mentor">Mentor</option>
+                    </select>
+                    <select
+                      value={lostLovedOne?.fate || ''}
+                      onChange={(e) => setLostLovedOne(prev => prev ? { ...prev, fate: e.target.value as LostLovedOne['fate'] } : null)}
+                      className="input"
+                      disabled={!lostLovedOne?.name}
+                      title="Fate of lost loved one"
+                      aria-label="Fate of lost loved one"
+                    >
+                      <option value="">Their fate</option>
+                      <option value="dead">Dead</option>
+                      <option value="turned">Turned</option>
+                      <option value="missing">Missing</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Haunting Memory */}
+                <div>
+                  <label className="panel-label">Haunting Memory <span className="text-muted">(optional)</span></label>
+                  <textarea
+                    value={hauntingMemory}
+                    onChange={(e) => setHauntingMemory(e.target.value)}
+                    placeholder="A moment you can't forget... something that changed you..."
+                    className="input min-h-[80px]"
+                    maxLength={200}
+                  />
+                </div>
+
+                {/* Who They Protect */}
+                <div>
+                  <label className="panel-label">Someone to Protect <span className="text-muted">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={whoTheyProtect}
+                    onChange={(e) => setWhoTheyProtect(e.target.value)}
+                    placeholder="Who are you surviving for?"
+                    className="input"
+                    maxLength={50}
+                  />
+                </div>
+
+                {/* Sentimental Item */}
+                <div>
+                  <label className="panel-label">Sentimental Item <span className="text-muted">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={sentimentalItem}
+                    onChange={(e) => setSentimentalItem(e.target.value)}
+                    placeholder="An item with no practical value but infinite meaning"
+                    className="input"
+                    maxLength={50}
+                  />
+                  <p className="text-xs text-muted mt-1">No mechanical benefit, but it matters to you</p>
+                </div>
+
+                {/* NPC Bonds */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-card rounded-lg border border-subtle">
+                    <label className="panel-label text-success">Someone You Trust <span className="text-muted">(optional)</span></label>
+                    <p className="text-xs text-muted mb-2">The GM may introduce this NPC into your story</p>
+                    <input
+                      type="text"
+                      value={trustedNPC?.name || ''}
+                      onChange={(e) => setTrustedNPC(e.target.value ? { name: e.target.value, type: 'trust' } : null)}
+                      placeholder="Their name"
+                      className="input mb-2"
+                      maxLength={30}
+                    />
+                    {trustedNPC?.name && (
+                      <input
+                        type="text"
+                        value={trustedNPC?.description || ''}
+                        onChange={(e) => setTrustedNPC(prev => prev ? { ...prev, description: e.target.value } : null)}
+                        placeholder="How do you know them?"
+                        className="input"
+                        maxLength={50}
+                      />
+                    )}
+                  </div>
+                  <div className="p-4 bg-card rounded-lg border border-subtle">
+                    <label className="panel-label text-warning">Someone You&apos;re Wary Of <span className="text-muted">(optional)</span></label>
+                    <p className="text-xs text-muted mb-2">A potential source of conflict or betrayal</p>
+                    <input
+                      type="text"
+                      value={waryNPC?.name || ''}
+                      onChange={(e) => setWaryNPC(e.target.value ? { name: e.target.value, type: 'wary' } : null)}
+                      placeholder="Their name"
+                      className="input mb-2"
+                      maxLength={30}
+                    />
+                    {waryNPC?.name && (
+                      <input
+                        type="text"
+                        value={waryNPC?.description || ''}
+                        onChange={(e) => setWaryNPC(prev => prev ? { ...prev, description: e.target.value } : null)}
+                        placeholder="Why don't you trust them?"
+                        className="input"
+                        maxLength={50}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 5: Attributes */}
         {step === 'attributes' && (
           <div className="animate-fade-in">
             <div className="panel mb-8">
@@ -734,20 +1169,12 @@ export default function NewGame() {
                 ))}
               </div>
 
-              <div className={`text-center text-lg ${skillPoints === 0 ? 'text-success' : 'text-gold'}`}>
+              <div className={`text-center text-lg mb-6 ${skillPoints === 0 ? 'text-success' : 'text-gold'}`}>
                 Points remaining: {skillPoints}
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Step 5: Story */}
-        {step === 'story' && (
-          <div className="animate-fade-in">
-            <div className="panel mb-8">
-              <h2 className="text-2xl font-bold text-center mb-6">YOUR STORY</h2>
-
-              <div className="mb-6">
+              {/* Motivation - moved from story step */}
+              <div className="border-t border-subtle pt-6 mt-6">
                 <label className="panel-label">Why do you keep going?</label>
                 <input
                   type="text"
@@ -759,149 +1186,105 @@ export default function NewGame() {
                 />
               </div>
 
-              <div>
-                <label className="panel-label">Starting Scenario</label>
-                
-                {/* Tab Selection */}
-                <div className="flex gap-2 mb-4">
-                  <button
-                    onClick={() => setScenarioTab('premade')}
-                    className={`flex-1 py-2 px-4 rounded-lg border transition-all ${
-                      scenarioTab === 'premade' 
-                        ? 'border-gold bg-gold/10 text-primary' 
-                        : 'border-subtle hover:border-medium text-secondary'
-                    }`}
-                  >
-                    📚 Premade Stories
-                  </button>
-                  <button
-                    onClick={() => setScenarioTab('custom')}
-                    className={`flex-1 py-2 px-4 rounded-lg border transition-all ${
-                      scenarioTab === 'custom' 
-                        ? 'border-gold bg-gold/10 text-primary' 
-                        : 'border-subtle hover:border-medium text-secondary'
-                    }`}
-                  >
-                    ✏️ Custom
-                  </button>
+              {/* Moral Code */}
+              <div className="mt-6">
+                <label className="panel-label">Moral Code <span className="text-muted">(optional)</span></label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {(Object.keys(MORAL_CODES) as MoralCode[]).map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => setMoralCode(moralCode === code ? null : code)}
+                      className={`p-3 rounded-lg border transition-all text-left ${
+                        moralCode === code
+                          ? 'border-gold bg-gold/10'
+                          : 'border-subtle hover:border-medium'
+                      }`}
+                    >
+                      <div className="font-medium text-sm">{MORAL_CODES[code].name}</div>
+                      <div className="text-xs text-muted line-clamp-2">{MORAL_CODES[code].description}</div>
+                    </button>
+                  ))}
                 </div>
-
-                {scenarioTab === 'premade' ? (
-                  <div className="space-y-6">
-                    {/* Timeframe Groups */}
-                    {Object.entries(getScenariosByTimeframe()).map(([timeframe, scenarios]) => {
-                      if (scenarios.length === 0) return null;
-                      const timeframeLabels: Record<string, { label: string; desc: string }> = {
-                        'day-one': { label: '🌅 Day One', desc: 'The outbreak begins' },
-                        'early': { label: '📅 Early Days', desc: '1-2 weeks in' },
-                        'established': { label: '🏕️ Established', desc: '1+ months in' },
-                        'late': { label: '❄️ Late Stage', desc: '6+ months in' }
-                      };
-                      const info = timeframeLabels[timeframe] || { label: timeframe, desc: '' };
-                      
-                      return (
-                        <div key={timeframe}>
-                          <div className="flex items-center gap-2 mb-3">
-                            <h4 className="text-sm font-semibold uppercase tracking-wider text-muted">
-                              {info.label}
-                            </h4>
-                            <span className="text-xs text-muted">— {info.desc}</span>
-                          </div>
-                          <div className="grid gap-3">
-                            {scenarios.map((s) => {
-                              const diffStyle = getDifficultyStyle(s.difficulty);
-                              const isSelected = selectedScenario?.id === s.id;
-                              
-                              return (
-                                <button
-                                  key={s.id}
-                                  onClick={() => setSelectedScenario(s)}
-                                  className={`text-left p-4 rounded-lg border transition-all ${
-                                    isSelected 
-                                      ? 'border-gold bg-gold/10' 
-                                      : 'border-subtle hover:border-medium'
-                                  }`}
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <span className="text-2xl">{s.icon}</span>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-medium">{s.name}</span>
-                                        <span className={`text-xs px-2 py-0.5 rounded ${diffStyle.bg} ${diffStyle.color}`}>
-                                          {diffStyle.label}
-                                        </span>
-                                      </div>
-                                      <div className="text-sm text-gold italic">{s.tagline}</div>
-                                      <div className="text-sm text-secondary mt-1 line-clamp-2">
-                                        {s.description}
-                                      </div>
-                                      {isSelected && (
-                                        <div className="mt-3 pt-3 border-t border-subtle">
-                                          <div className="text-xs text-muted uppercase tracking-wider mb-2">
-                                            Themes
-                                          </div>
-                                          <div className="flex flex-wrap gap-1">
-                                            {s.themes.map((theme) => (
-                                              <span 
-                                                key={theme}
-                                                className="text-xs px-2 py-0.5 rounded bg-surface border border-subtle text-secondary"
-                                              >
-                                                {theme}
-                                              </span>
-                                            ))}
-                                          </div>
-                                          <div className="text-xs text-muted uppercase tracking-wider mt-3 mb-2">
-                                            Key NPCs
-                                          </div>
-                                          <div className="flex flex-wrap gap-2">
-                                            {s.npcs.slice(0, 3).map((npc) => (
-                                              <span 
-                                                key={npc.name}
-                                                className="text-xs text-secondary"
-                                                title={npc.role}
-                                              >
-                                                {npc.name} ({npc.role})
-                                              </span>
-                                            ))}
-                                            {s.npcs.length > 3 && (
-                                              <span className="text-xs text-muted">
-                                                +{s.npcs.length - 3} more
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                    {isSelected && (
-                                      <span className="text-gold">✓</span>
-                                    )}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-secondary">
-                      Describe your starting situation. The GM will craft a unique story based on your description.
-                    </p>
-                    <textarea
-                      value={customScenario}
-                      onChange={(e) => setCustomScenario(e.target.value)}
-                      placeholder="Where are you when the story begins? What's happening around you? Who else is there? What immediate danger or goal do you face?"
-                      className="input min-h-[160px]"
-                      maxLength={1000}
-                    />
-                    <div className="text-xs text-muted text-right">
-                      {customScenario.length}/1000
-                    </div>
-                  </div>
-                )}
               </div>
+
+              {/* Survival Philosophy */}
+              <div className="mt-6">
+                <label className="panel-label">Survival Philosophy <span className="text-muted">(optional)</span></label>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                  {(Object.keys(SURVIVAL_PHILOSOPHIES) as SurvivalPhilosophy[]).map((phil) => (
+                    <button
+                      key={phil}
+                      type="button"
+                      onClick={() => setSurvivalPhilosophy(survivalPhilosophy === phil ? null : phil)}
+                      className={`p-3 rounded-lg border transition-all text-left ${
+                        survivalPhilosophy === phil
+                          ? 'border-gold bg-gold/10'
+                          : 'border-subtle hover:border-medium'
+                      }`}
+                    >
+                      <div className="font-medium text-sm">{SURVIVAL_PHILOSOPHIES[phil].name}</div>
+                      <div className="text-xs text-muted line-clamp-2">{SURVIVAL_PHILOSOPHIES[phil].description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 7: Character Voice */}
+        {step === 'voice' && (
+          <div className="animate-fade-in">
+            <div className="panel mb-8">
+              <CharacterVoiceStep
+                characterName={name || 'Survivor'}
+                characterGender={appearance.gender}
+                selectedVoiceId={characterVoiceId}
+                onVoiceSelect={setCharacterVoiceId}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 8: Preferences */}
+        {step === 'preferences' && (
+          <div className="animate-fade-in">
+            <div className="panel mb-8">
+              <h2 className="text-2xl font-bold text-center mb-2">GAME PREFERENCES</h2>
+              <p className="text-center text-secondary mb-6">
+                Customize your experience. These settings will shape how the AI tells your story.
+              </p>
+              <PreferencesStep
+                preferences={preferences}
+                onChange={setPreferences}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 9: GM Voice */}
+        {step === 'gm-voice' && (
+          <div className="animate-fade-in">
+            <div className="panel mb-8">
+              <GMVoiceStep
+                selectedVoiceId={preferences.gmVoiceId || 'adam'}
+                onVoiceSelect={(voiceId) => setPreferences(prev => ({ ...prev, gmVoiceId: voiceId }))}
+                tone={preferences.tone}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 10: Scenario Selection */}
+        {step === 'scenario' && background && (
+          <div className="animate-fade-in">
+            <div className="panel mb-8">
+              <ScenarioSelectionStep
+                character={buildCharacter()}
+                preferences={preferences}
+                onScenarioSelected={handleScenarioSelected}
+              />
             </div>
           </div>
         )}
@@ -916,6 +1299,7 @@ export default function NewGame() {
         {/* Navigation Buttons */}
         <div className="flex justify-between">
           <button
+            type="button"
             onClick={prevStep}
             disabled={step === 'background' || isCreating}
             className="btn disabled:opacity-30"
@@ -923,8 +1307,9 @@ export default function NewGame() {
             ← Back
           </button>
 
-          {step !== 'story' ? (
+          {step !== 'scenario' ? (
             <button
+              type="button"
               onClick={nextStep}
               disabled={!canProceed()}
               className="btn btn-primary disabled:opacity-30"
@@ -932,13 +1317,25 @@ export default function NewGame() {
               Continue →
             </button>
           ) : (
-            <button
-              onClick={startGame}
-              disabled={!canProceed() || isCreating}
-              className="btn btn-primary disabled:opacity-30"
-            >
-              {isCreating ? 'Creating...' : 'BEGIN SURVIVAL'}
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={saveCharacterOnly}
+                disabled={!canProceed() || isCreating || !primaryTrait || !greatestFear || !copingMechanism}
+                className="btn border-gold text-gold hover:bg-gold/10 disabled:opacity-30"
+                title="Save character to your library without starting a game"
+              >
+                {isCreating ? 'Saving...' : 'Save Character Only'}
+              </button>
+              <button
+                type="button"
+                onClick={startGame}
+                disabled={!canProceed() || isCreating}
+                className="btn btn-primary disabled:opacity-30"
+              >
+                {isCreating ? 'Creating...' : 'BEGIN SURVIVAL'}
+              </button>
+            </div>
           )}
         </div>
       </main>

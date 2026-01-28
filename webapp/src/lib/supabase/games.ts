@@ -126,15 +126,27 @@ export async function getGame(gameId: string): Promise<GameState | null> {
 
 export interface CreateGameParams {
   name: string;
+  nickname?: string;
   background: Background;
   attributes: Attributes;
   skills: Skills;
   motivation: string;
-  scenario: string; // Scenario ID or 'custom'
+  scenario: string; // Scenario ID, 'custom', or 'generated'
   customScenario?: string;
+  generatedScenario?: import('../types/generated-scenario').FullGeneratedScenario;
+  preferences?: import('../types/game-preferences').GamePreferences;
   portraitUrl?: string;
   appearance?: import('../types').CharacterAppearance;
   artStyle?: import('../types').ArtStyle;
+  // New personality fields
+  personality?: import('../types').CharacterPersonality;
+  connections?: import('../types').CharacterConnections;
+  moralCode?: import('../types').MoralCode;
+  survivalPhilosophy?: import('../types').SurvivalPhilosophy;
+  // Voice selection
+  voiceId?: string;
+  // Optional: use an existing character
+  characterId?: string;
 }
 
 export async function createGame(params: CreateGameParams): Promise<string> {
@@ -161,6 +173,7 @@ export async function createGame(params: CreateGameParams): Promise<string> {
   const character: Character = {
     id: crypto.randomUUID(),
     name: params.name,
+    nickname: params.nickname,
     background: params.background,
     motivation: params.motivation,
     portraitUrl: params.portraitUrl,
@@ -184,7 +197,14 @@ export async function createGame(params: CreateGameParams): Promise<string> {
     armor: null,
     carryingCapacity,
     food: 3,
-    water: 3
+    water: 3,
+    // New personality fields
+    personality: params.personality,
+    connections: params.connections,
+    moralCode: params.moralCode,
+    survivalPhilosophy: params.survivalPhilosophy,
+    // Voice settings
+    voiceId: params.voiceId
   };
 
   // Parse weapons from gear
@@ -274,40 +294,84 @@ export async function createGame(params: CreateGameParams): Promise<string> {
     };
   }
 
-  // Get scenario data
-  const scenarioData = params.scenario !== 'custom' ? getScenario(params.scenario) : null;
+  // Get scenario data - handle premade, custom, and generated scenarios
+  const isGenerated = params.scenario === 'generated' && params.generatedScenario;
+  const scenarioData = !isGenerated && params.scenario !== 'custom' ? getScenario(params.scenario) : null;
+  const genScenario = params.generatedScenario;
+
   const isEarlyOutbreak = scenarioData?.timeframe === 'day-one' || scenarioData?.timeframe === 'early';
-  
-  // Starting location from scenario or defaults
-  const location = scenarioData?.startingLocation 
-    ? {
-        name: scenarioData.startingLocation.name,
-        description: scenarioData.startingLocation.description,
-        lightLevel: 'bright' as const,
-        scarcity: 'moderate' as const,
-        ambientThreat: isEarlyOutbreak ? 2 : 4,
-        searched: false
-      }
-    : {
-        name: 'Unknown Location',
-        description: params.customScenario || 'Your story begins here.',
-        lightLevel: 'bright' as const,
-        scarcity: 'moderate' as const,
-        ambientThreat: 3,
-        searched: false
-      };
+
+  // Starting location from scenario or generated scenario
+  let location;
+  if (isGenerated && genScenario?.location) {
+    location = {
+      name: genScenario.location.name,
+      description: genScenario.location.description,
+      lightLevel: 'bright' as const,
+      scarcity: 'moderate' as const,
+      ambientThreat: 3,
+      searched: false
+    };
+  } else if (scenarioData?.startingLocation) {
+    location = {
+      name: scenarioData.startingLocation.name,
+      description: scenarioData.startingLocation.description,
+      lightLevel: 'bright' as const,
+      scarcity: 'moderate' as const,
+      ambientThreat: isEarlyOutbreak ? 2 : 4,
+      searched: false
+    };
+  } else {
+    location = {
+      name: 'Unknown Location',
+      description: params.customScenario || 'Your story begins here.',
+      lightLevel: 'bright' as const,
+      scarcity: 'moderate' as const,
+      ambientThreat: 3,
+      searched: false
+    };
+  }
 
   // Create game title from scenario
-  const title = scenarioData?.name || params.customScenario?.slice(0, 30) || 'New Story';
+  const title = isGenerated && genScenario
+    ? genScenario.title
+    : scenarioData?.name || params.customScenario?.slice(0, 30) || 'New Story';
 
   // Insert game - use any to bypass strict typing issues with Supabase client
-  // Calculate starting day and threat based on scenario timeframe
-  const startingDay = scenarioData 
-    ? { 'day-one': 1, 'early': 10, 'established': 35, 'late': 180 }[scenarioData.timeframe] || 1
-    : 1;
-  const startingThreat = scenarioData
-    ? { 'day-one': 2, 'early': 4, 'established': 5, 'late': 6 }[scenarioData.timeframe] || 3
-    : 3;
+  // Calculate starting day and threat based on scenario timeframe or difficulty
+  let startingDay = 1;
+  let startingThreat = 3;
+
+  if (scenarioData) {
+    startingDay = { 'day-one': 1, 'early': 10, 'established': 35, 'late': 180 }[scenarioData.timeframe] || 1;
+    startingThreat = { 'day-one': 2, 'early': 4, 'established': 5, 'late': 6 }[scenarioData.timeframe] || 3;
+  } else if (params.preferences) {
+    // Adjust starting threat based on difficulty preference
+    startingThreat = { 'easy': 2, 'standard': 3, 'challenging': 4, 'brutal': 5 }[params.preferences.difficulty] || 3;
+  }
+
+  // Build scenario data for database storage
+  let scenarioDataForDB = null;
+  if (isGenerated && genScenario) {
+    scenarioDataForDB = {
+      id: 'generated',
+      name: genScenario.title,
+      npcs: genScenario.npcs,
+      storyBeats: genScenario.storyBeats,
+      potentialTwists: genScenario.potentialTwists,
+      toneGuidance: genScenario.toneGuidance,
+      openingNarrative: genScenario.openingNarrative
+    };
+  } else if (scenarioData) {
+    scenarioDataForDB = {
+      id: scenarioData.id,
+      name: scenarioData.name,
+      npcs: scenarioData.npcs,
+      storyBeats: scenarioData.storyBeats,
+      potentialTwists: scenarioData.potentialTwists,
+      toneGuidance: scenarioData.toneGuidance
+    };
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: gameData, error: gameError } = await (supabase as any)
@@ -323,15 +387,12 @@ export async function createGame(params: CreateGameParams): Promise<string> {
       threat_state: 'safe',
       session_start_time: new Date().toISOString(),
       // Store scenario data for GM reference (JSONB columns, pass objects directly)
-      scenario_id: params.scenario || null,
-      scenario_data: scenarioData ? {
-        id: scenarioData.id,
-        name: scenarioData.name,
-        npcs: scenarioData.npcs,
-        storyBeats: scenarioData.storyBeats,
-        potentialTwists: scenarioData.potentialTwists,
-        toneGuidance: scenarioData.toneGuidance
-      } : null
+      scenario_id: isGenerated ? 'generated' : (params.scenario || null),
+      scenario_data: scenarioDataForDB,
+      // Store preferences if provided
+      preferences: params.preferences || null,
+      // Store GM voice selection
+      gm_voice_id: params.preferences?.gmVoiceId || 'adam'
     })
     .select('id')
     .single();
