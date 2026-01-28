@@ -14,15 +14,17 @@ interface UseSaveStatusReturn {
   isOnline: boolean;
 }
 
-export function useSaveStatus({ 
-  onSave, 
-  debounceMs = 2000 
+export function useSaveStatus({
+  onSave,
+  debounceMs = 2000
 }: UseSaveStatusOptions): UseSaveStatusReturn {
   const [status, setStatus] = useState<SaveStatus>('saved');
   const [lastSaved, setLastSaved] = useState<Date | undefined>(undefined);
   const [isOnline, setIsOnline] = useState(true);
   const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const isDirtyRef = useRef(false);
+  const isMountedRef = useRef(true);
   const performSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Track online status
@@ -61,15 +63,23 @@ export function useSaveStatus({
     setStatus('saving');
     try {
       await onSave();
-      setStatus('saved');
-      setLastSaved(new Date());
+      if (isMountedRef.current) {
+        setStatus('saved');
+        setLastSaved(new Date());
+      }
       isDirtyRef.current = false;
     } catch (error) {
       console.error('Save failed:', error);
-      setStatus('error');
+      if (isMountedRef.current) {
+        setStatus('error');
+      }
       // Retry after 5 seconds using ref to avoid closure issues
-      setTimeout(() => {
-        if (isDirtyRef.current && performSaveRef.current) {
+      // Clear any existing retry timeout first
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+      retryTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current && isDirtyRef.current && performSaveRef.current) {
           performSaveRef.current();
         }
       }, 5000);
@@ -104,9 +114,14 @@ export function useSaveStatus({
 
   // Cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
       }
     };
   }, []);

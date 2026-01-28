@@ -175,9 +175,9 @@ function GameErrorFallback({
         </h2>
         
         <div className="mb-6 font-mono text-xs text-red-400/70 space-y-1">
-          <p>/// ERROR: SYSTEM_FAILURE ///</p>
-          <p>/// CONNECTION_TERMINATED ///</p>
-          <p>/// ATTEMPTING_RECOVERY... ///</p>
+          <p>{"/// ERROR: SYSTEM_FAILURE ///"}</p>
+          <p>{"/// CONNECTION_TERMINATED ///"}</p>
+          <p>{"/// ATTEMPTING_RECOVERY... ///"}</p>
         </div>
         
         <p className="text-gray-400 mb-2">

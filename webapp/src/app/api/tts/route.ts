@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  checkRateLimit, 
-  getClientIdentifier, 
-  RATE_LIMITS, 
+import {
+  checkRateLimit,
+  RATE_LIMITS,
   createRateLimitResponse,
-  createRateLimitHeaders 
+  createRateLimitHeaders
 } from '@/lib/rate-limit';
+import { createClient } from '@/lib/supabase/server';
 
 // ElevenLabs voice IDs - curated for horror/narrative experiences
 // All these are available on the free plan (pre-made voices)
@@ -65,10 +65,21 @@ function sanitizeText(text: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  // Rate limiting
-  const clientId = getClientIdentifier(request);
+  // Authentication check
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: 'Unauthorized', details: 'You must be logged in to use this API' },
+      { status: 401 }
+    );
+  }
+
+  // Rate limiting (now using authenticated user ID)
+  const clientId = user.id;
   const rateLimitResult = checkRateLimit(`tts:${clientId}`, RATE_LIMITS.tts);
-  
+
   if (!rateLimitResult.success) {
     return createRateLimitResponse(rateLimitResult, RATE_LIMITS.tts, 'TTS API');
   }

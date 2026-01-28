@@ -383,15 +383,27 @@ export function useGameAudio(options: UseGameAudioOptions = {}) {
     setIsMuted(prev => !prev);
   }, []);
 
-  // Cleanup on unmount
+  // Cleanup on unmount - inline cleanup to avoid stale closure references
   useEffect(() => {
     return () => {
-      stopMusic();
+      // Stop all oscillators directly (avoid using stopMusic which may have stale refs)
+      musicOscillatorsRef.current.forEach(osc => {
+        try { osc.stop(); } catch { /* already stopped */ }
+      });
+      musicNodesRef.current.forEach(node => {
+        try { node.stop(); } catch { /* already stopped */ }
+      });
+      musicOscillatorsRef.current = [];
+      musicNodesRef.current = [];
+
+      // Close audio context
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        audioContextRef.current.close().catch(() => {
+          // Ignore errors on close
+        });
       }
     };
-  }, [stopMusic]);
+  }, []); // Empty deps - cleanup logic uses refs directly
 
   return {
     currentMusic,

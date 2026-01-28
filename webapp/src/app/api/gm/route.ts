@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GM_SYSTEM_PROMPT, buildContextualPrompt } from '@/lib/ai/gm-prompt';
 import { rollDicePool, rollOpposed, rollInfectionCheck, rollBreakingPoint } from '@/lib/game-engine/dice';
 import { GameState, RollResult, AttributeName, SkillName, GMStateChanges } from '@/lib/types';
-import { 
-  checkRateLimit, 
-  getClientIdentifier, 
-  RATE_LIMITS, 
+import {
+  checkRateLimit,
+  RATE_LIMITS,
   createRateLimitResponse,
-  createRateLimitHeaders 
+  createRateLimitHeaders
 } from '@/lib/rate-limit';
+import { createClient } from '@/lib/supabase/server';
 
 // Types for GM responses
 interface GMRoll {
@@ -287,10 +287,21 @@ function validateGameState(state: unknown): state is GameState {
 }
 
 export async function POST(request: NextRequest) {
-  // Rate limiting
-  const clientId = getClientIdentifier(request);
+  // Authentication check
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: 'Unauthorized', details: 'You must be logged in to use this API' },
+      { status: 401 }
+    );
+  }
+
+  // Rate limiting (now using authenticated user ID)
+  const clientId = user.id;
   const rateLimitResult = checkRateLimit(`gm:${clientId}`, RATE_LIMITS.gm);
-  
+
   if (!rateLimitResult.success) {
     return createRateLimitResponse(rateLimitResult, RATE_LIMITS.gm, 'GM API');
   }

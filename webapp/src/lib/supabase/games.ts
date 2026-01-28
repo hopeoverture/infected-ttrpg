@@ -457,37 +457,63 @@ export async function updateGame(gameId: string, updates: Partial<GameState>): P
 }
 
 export async function addMessage(
-  gameId: string, 
+  gameId: string,
   role: 'gm' | 'player' | 'system',
   content: string,
   rollData?: Message['roll']
 ): Promise<Message> {
   const supabase = createClient();
 
-  // Get next sequence number
+  // Use atomic INSERT with subquery to prevent race condition
+  // This calculates sequence_num in the same transaction as the insert
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: seqData, error: seqError } = await (supabase as any)
-    .rpc('get_next_message_sequence', { p_game_id: gameId });
-
-  if (seqError) {
-    console.error('Error getting sequence:', seqError);
-    throw seqError;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any)
-    .from('messages')
-    .insert({
-      game_id: gameId,
-      role,
-      content,
-      roll_data: rollData,
-      sequence_num: seqData
-    })
-    .select()
-    .single();
+  const { data, error } = await (supabase as any).rpc('insert_message_atomic', {
+    p_game_id: gameId,
+    p_role: role,
+    p_content: content,
+    p_roll_data: rollData || null
+  });
 
   if (error) {
+    // Fallback to non-atomic version if RPC doesn't exist (for backwards compatibility)
+    if (error.code === 'PGRST202' || error.message?.includes('function') || error.message?.includes('does not exist')) {
+      console.warn('insert_message_atomic RPC not found, using fallback');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: seqData, error: seqError } = await (supabase as any)
+        .rpc('get_next_message_sequence', { p_game_id: gameId });
+
+      if (seqError) {
+        console.error('Error getting sequence:', seqError);
+        throw seqError;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: insertData, error: insertError } = await (supabase as any)
+        .from('messages')
+        .insert({
+          game_id: gameId,
+          role,
+          content,
+          roll_data: rollData,
+          sequence_num: seqData
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error adding message:', insertError);
+        throw insertError;
+      }
+
+      return {
+        id: insertData.id,
+        role: insertData.role,
+        content: insertData.content,
+        timestamp: new Date(insertData.created_at),
+        roll: insertData.roll_data as unknown as Message['roll']
+      };
+    }
+
     console.error('Error adding message:', error);
     throw error;
   }

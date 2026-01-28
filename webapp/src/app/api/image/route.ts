@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  checkRateLimit, 
-  getClientIdentifier, 
-  RATE_LIMITS, 
+import {
+  checkRateLimit,
+  RATE_LIMITS,
   createRateLimitResponse,
-  createRateLimitHeaders 
+  createRateLimitHeaders
 } from '@/lib/rate-limit';
 import { ArtStyle, ART_STYLE_PROMPTS } from '@/lib/types';
+import { createClient } from '@/lib/supabase/server';
 
 // Image generation types
 interface ImageGenerationRequest {
@@ -239,7 +239,7 @@ async function generateWithGemini(prompt: string, type: 'portrait' | 'scene'): P
     : STYLE_PRESETS.scene.negative;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: {
@@ -294,10 +294,21 @@ function sanitizeInput(input: string, maxLength: number = 500): string {
 }
 
 export async function POST(request: NextRequest) {
-  // Rate limiting
-  const clientId = getClientIdentifier(request);
+  // Authentication check
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: 'Unauthorized', details: 'You must be logged in to use this API' },
+      { status: 401 }
+    );
+  }
+
+  // Rate limiting (now using authenticated user ID)
+  const clientId = user.id;
   const rateLimitResult = checkRateLimit(`image:${clientId}`, RATE_LIMITS.image);
-  
+
   if (!rateLimitResult.success) {
     return createRateLimitResponse(rateLimitResult, RATE_LIMITS.image, 'Image API');
   }
@@ -415,7 +426,7 @@ export async function GET() {
     status: 'ok',
     providers: {
       openai: hasOpenAI ? 'gpt-image-1.5' : false,
-      gemini: hasGemini ? 'gemini-3-pro-image-preview' : false,
+      gemini: hasGemini ? 'gemini-3-pro-preview' : false,
       replicate: hasReplicate ? 'sdxl' : false
     },
     configured: hasOpenAI || hasGemini || hasReplicate,
