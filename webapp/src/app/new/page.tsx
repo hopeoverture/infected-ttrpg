@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -135,6 +135,7 @@ export default function NewGame() {
   
   // Narration hook for atmospheric voice-over
   const narration = useCreationNarration({ enabled: true });
+  const isFirstMount = useRef(true);
 
   // Play intro narration on mount
   useEffect(() => {
@@ -146,8 +147,14 @@ export default function NewGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Play narration when step changes
+  // Play narration when step changes (skip initial mount - intro handles that)
   useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
+    // Stop any current audio before playing new step narration
+    narration.stop();
     narration.playForStep(step);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
