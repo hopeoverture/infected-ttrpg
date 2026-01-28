@@ -21,6 +21,11 @@ interface GMRoll {
   isPush?: boolean;
 }
 
+interface AudioCues {
+  music?: string | null;
+  soundEffects?: string[];
+}
+
 interface GMResponse {
   narrative: string;
   stateChanges: GMStateChanges;
@@ -30,6 +35,7 @@ interface GMResponse {
   breakingPoint?: boolean;
   sceneChanged?: boolean;
   sceneDescription?: string | null;
+  audio?: AudioCues | null;
 }
 
 // Execute a dice roll based on GM's request
@@ -227,6 +233,7 @@ function parseGMResponse(text: string): GMResponse {
       breakingPoint: parsed.breakingPoint || false,
       sceneChanged: parsed.sceneChanged || false,
       sceneDescription: parsed.sceneDescription || null,
+      audio: parsed.audio || null,
     };
   } catch (e) {
     console.error('Failed to parse GM response:', e, '\nRaw text:', text);
@@ -235,6 +242,7 @@ function parseGMResponse(text: string): GMResponse {
       narrative: text,
       stateChanges: {},
       roll: null,
+      audio: null,
     };
   }
 }
@@ -392,6 +400,7 @@ export async function POST(request: NextRequest) {
       breakingPoint: gmResponse.breakingPoint,
       sceneChanged: gmResponse.sceneChanged,
       sceneDescription: gmResponse.sceneDescription,
+      audio: gmResponse.audio, // Music and sound effect cues
       rawRollRequest: gmResponse.roll, // Include original request for follow-up
     });
     

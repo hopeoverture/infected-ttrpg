@@ -12,6 +12,11 @@ import {
 } from '@/lib/types';
 import { getGame, updateGame, addMessage } from '@/lib/supabase/games';
 
+export interface AudioCues {
+  music?: string | null;
+  soundEffects?: string[];
+}
+
 export interface GMApiResponse {
   narrative: string;
   stateChanges: GMStateChanges;
@@ -29,6 +34,7 @@ export interface GMApiResponse {
   breakingPoint?: boolean;
   sceneChanged?: boolean;
   sceneDescription?: string | null;
+  audio?: AudioCues | null;
   error?: string;
   details?: string;
 }

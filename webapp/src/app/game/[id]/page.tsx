@@ -26,6 +26,7 @@ import DeathSceneModal from '@/components/game/DeathSceneModal';
 // Hooks
 import { useGameSession, GMApiResponse } from '@/hooks/useGameSession';
 import { useAudioNarration } from '@/hooks/useAudioNarration';
+import { useGameAudio } from '@/hooks/useGameAudio';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
 
@@ -96,7 +97,7 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     }
   });
 
-  // Audio Narration Hook
+  // Audio Narration Hook (TTS)
   const {
     isMuted,
     toggleMute,
@@ -105,6 +106,12 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     stopAudio,
     togglePlayback,
   } = useAudioNarration();
+
+  // Game Audio Hook (Music & SFX)
+  const gameAudio = useGameAudio({
+    enabled: settings.soundEffectsEnabled !== false,
+    volume: settings.soundVolume ?? 0.7,
+  });
 
   // Save Status Hook
   const {
@@ -145,11 +152,16 @@ export default function GameSession({ params }: { params: Promise<{ id: string }
     enabled: !deathOpen
   });
 
-  // Handle GM Response - check for special events
+  // Handle GM Response - check for special events and process audio
   function handleGMResponse(response: GMApiResponse) {
     // Track roll for combat
     if (response.roll?.result) {
       setLastRoll(response.roll.result);
+    }
+
+    // Process audio cues (music and sound effects)
+    if (response.audio) {
+      gameAudio.processAudioCues(response.audio);
     }
 
     // Check for breaking point
