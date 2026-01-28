@@ -322,23 +322,29 @@ export async function createGame(params: CreateGameParams): Promise<string> {
       threat: startingThreat,
       threat_state: 'safe',
       session_start_time: new Date().toISOString(),
-      // Store scenario data for GM reference
-      scenario_id: params.scenario,
-      scenario_data: scenarioData ? JSON.stringify({
+      // Store scenario data for GM reference (JSONB columns, pass objects directly)
+      scenario_id: params.scenario || null,
+      scenario_data: scenarioData ? {
         id: scenarioData.id,
         name: scenarioData.name,
         npcs: scenarioData.npcs,
         storyBeats: scenarioData.storyBeats,
         potentialTwists: scenarioData.potentialTwists,
         toneGuidance: scenarioData.toneGuidance
-      }) : null
+      } : null
     })
     .select('id')
     .single();
 
   if (gameError) {
-    console.error('Error creating game:', gameError);
-    throw gameError;
+    console.error('Error creating game:', {
+      message: gameError.message,
+      details: gameError.details,
+      hint: gameError.hint,
+      code: gameError.code,
+      full: JSON.stringify(gameError, null, 2)
+    });
+    throw new Error(gameError.message || 'Failed to create game - check if database schema is up to date');
   }
 
   // Create initial GM message based on scenario
