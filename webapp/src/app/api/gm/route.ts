@@ -414,15 +414,35 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('GM API error:', error);
-    // Don't expose internal error details to clients
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Determine user-friendly error message
+    let userMessage = 'Failed to process GM response';
+    let details = 'Internal error';
+    
+    if (errorMessage.includes('API key') || errorMessage.includes('configured')) {
+      userMessage = 'AI service not configured';
+      details = 'Please set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in your environment';
+    } else if (errorMessage.includes('Anthropic API error')) {
+      userMessage = 'AI provider error';
+      details = errorMessage;
+    } else if (errorMessage.includes('OpenAI API error')) {
+      userMessage = 'AI provider error';
+      details = errorMessage;
+    } else if (errorMessage.includes('Gemini API error')) {
+      userMessage = 'AI provider error';
+      details = errorMessage;
+    } else if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+      userMessage = 'Rate limited';
+      details = 'Too many requests. Please wait a moment.';
+    }
+    
     return NextResponse.json(
       { 
-        error: 'Failed to process GM response',
-        // Only expose safe error messages
-        details: error instanceof Error && 
-          (error.message.includes('API key') || error.message.includes('configured'))
-          ? 'AI service not configured'
-          : 'Internal error'
+        error: userMessage,
+        details: details,
+        debug: process.env.NODE_ENV === 'development' ? errorMessage : undefined
       },
       { status: 500 }
     );
