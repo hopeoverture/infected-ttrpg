@@ -56,9 +56,10 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
   });
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const playedStepsRef = useRef<Set<string>>(new Set());
+  // Unique ID for current playback - used to detect stale async operations
+  const currentPlayIdRef = useRef<number>(0);
 
   // Persist mute state
   useEffect(() => {
@@ -68,36 +69,44 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      currentPlayIdRef.current = -1; // Invalidate all pending operations
       if (abortRef.current) abortRef.current.abort();
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = '';
       }
-      if (speechRef.current) {
-        window.speechSynthesis?.cancel();
-      }
+      window.speechSynthesis?.cancel();
     };
   }, []);
 
-  const stop = useCallback(() => {
+  const stopAll = useCallback(() => {
+    // Increment play ID to invalidate any pending async operations
+    currentPlayIdRef.current++;
+    
+    // Abort any pending fetch
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
     }
+    
+    // Stop HTML5 audio
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = '';
       audioRef.current = null;
     }
-    if (speechRef.current) {
-      window.speechSynthesis?.cancel();
-      speechRef.current = null;
-    }
+    
+    // Stop Web Speech
+    window.speechSynthesis?.cancel();
+    
     setIsPlaying(false);
     setIsLoading(false);
   }, []);
 
-  const playWithWebSpeech = useCallback((text: string) => {
+  const playWithWebSpeech = useCallback((text: string, playId: number) => {
+    // Check if this playback is still valid
+    if (playId !== currentPlayIdRef.current) return;
+    
     if (!window.speechSynthesis) {
       console.warn('Web Speech API not available');
       return;
@@ -123,27 +132,34 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
     utterance.volume = 1;
 
     utterance.onstart = () => {
+      if (playId !== currentPlayIdRef.current) {
+        window.speechSynthesis?.cancel();
+        return;
+      }
       setIsPlaying(true);
       setIsLoading(false);
       onNarrationStart?.();
     };
 
     utterance.onend = () => {
-      setIsPlaying(false);
-      setCurrentText(null);
-      setCurrentSubtitle(null);
-      onNarrationEnd?.();
+      if (playId === currentPlayIdRef.current) {
+        setIsPlaying(false);
+        setCurrentText(null);
+        setCurrentSubtitle(null);
+        onNarrationEnd?.();
+      }
     };
 
     utterance.onerror = (e) => {
-      if (e.error !== 'canceled') {
+      if (e.error !== 'canceled' && e.error !== 'interrupted') {
         console.error('Speech error:', e);
       }
-      setIsPlaying(false);
-      setIsLoading(false);
+      if (playId === currentPlayIdRef.current) {
+        setIsPlaying(false);
+        setIsLoading(false);
+      }
     };
 
-    speechRef.current = utterance;
     window.speechSynthesis.speak(utterance);
   }, [onNarrationStart, onNarrationEnd]);
 
@@ -157,8 +173,9 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
     const narration = CREATION_NARRATION[key];
     if (!narration) return;
 
-    // Stop any current playback
-    stop();
+    // Stop any current playback and get a new play ID
+    stopAll();
+    const playId = currentPlayIdRef.current;
 
     setCurrentText(narration.text);
     setCurrentSubtitle(narration.subtitle);
@@ -174,6 +191,9 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
         signal: abortRef.current.signal,
       });
 
+      // Check if this playback is still valid after fetch
+      if (playId !== currentPlayIdRef.current) return;
+
       if (!response.ok) {
         throw new Error(`TTS error: ${response.status}`);
       }
@@ -183,19 +203,26 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
       if (contentType?.includes('application/json')) {
         const data = await response.json();
         if (data.fallback) {
-          playWithWebSpeech(narration.text);
+          playWithWebSpeech(narration.text, playId);
           return;
         }
         throw new Error(data.error);
       }
 
       const blob = await response.blob();
+      
+      // Check again after blob processing
+      if (playId !== currentPlayIdRef.current) return;
+      
       const url = URL.createObjectURL(blob);
-
       const audio = new Audio(url);
       audioRef.current = audio;
 
       audio.oncanplaythrough = () => {
+        if (playId !== currentPlayIdRef.current) {
+          URL.revokeObjectURL(url);
+          return;
+        }
         setIsLoading(false);
         setIsPlaying(true);
         onNarrationStart?.();
@@ -203,24 +230,35 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
 
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        setIsPlaying(false);
-        setCurrentText(null);
-        setCurrentSubtitle(null);
-        onNarrationEnd?.();
+        if (playId === currentPlayIdRef.current) {
+          setIsPlaying(false);
+          setCurrentText(null);
+          setCurrentSubtitle(null);
+          onNarrationEnd?.();
+        }
       };
 
       audio.onerror = () => {
         URL.revokeObjectURL(url);
-        playWithWebSpeech(narration.text);
+        if (playId === currentPlayIdRef.current) {
+          // Fallback to Web Speech
+          playWithWebSpeech(narration.text, playId);
+        }
       };
 
-      await audio.play();
+      // Only play if still valid
+      if (playId === currentPlayIdRef.current) {
+        await audio.play();
+      }
     } catch (error) {
+      // Ignore aborted requests and stale playbacks
       if ((error as Error).name === 'AbortError') return;
+      if (playId !== currentPlayIdRef.current) return;
+      
       console.error('Narration error:', error);
-      playWithWebSpeech(narration.text);
+      playWithWebSpeech(narration.text, playId);
     }
-  }, [enabled, isMuted, stop, playWithWebSpeech, onNarrationStart, onNarrationEnd]);
+  }, [enabled, isMuted, stopAll, playWithWebSpeech, onNarrationStart, onNarrationEnd]);
 
   const playIntro = useCallback(() => {
     if (!hasPlayedIntro) {
@@ -238,10 +276,10 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
-      if (!prev) stop();
+      if (!prev) stopAll();
       return !prev;
     });
-  }, [stop]);
+  }, [stopAll]);
 
   const resetPlayed = useCallback(() => {
     playedStepsRef.current.clear();
@@ -257,7 +295,7 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
     play,
     playIntro,
     playForStep,
-    stop,
+    stop: stopAll,
     toggleMute,
     resetPlayed,
     hasPlayedIntro
