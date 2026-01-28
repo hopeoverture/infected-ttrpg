@@ -7,6 +7,12 @@ export { default as MobileNav, CharacterMiniStatus, type MobileTab } from './Mob
 export { default as CombatTracker } from './CombatTracker';
 export { default as SceneImage } from './SceneImage';
 
+// Extracted page components (from game/[id]/page.tsx)
+export { default as CombatPanel } from './CombatPanel';
+export { default as AudioPlayer, MuteButton } from './AudioPlayer';
+export { default as MessageHistory } from './MessageHistory';
+export { default as ActionInput, type ActionInputRef } from './ActionInput';
+
 // Audio components
 export { default as AudioNarration, MuteToggle } from './AudioNarration';
 
@@ -20,6 +26,9 @@ export { default as KeyboardHelpOverlay } from './KeyboardHelpOverlay';
 // Status indicators
 export { default as SaveIndicator, type SaveStatus } from './SaveIndicator';
 export { default as GMThinkingIndicator } from './GMThinkingIndicator';
+
+// Error handling
+export { default as GameErrorBoundary, useGameErrorRecovery } from './GameErrorBoundary';
 
 // Character components
 export { default as CharacterPortrait } from './CharacterPortrait';
