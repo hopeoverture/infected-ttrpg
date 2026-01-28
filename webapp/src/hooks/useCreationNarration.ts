@@ -38,12 +38,13 @@ type NarrationKey = keyof typeof CREATION_NARRATION;
 
 interface UseCreationNarrationOptions {
   enabled?: boolean;
+  voiceId?: string;
   onNarrationStart?: () => void;
   onNarrationEnd?: () => void;
 }
 
 export function useCreationNarration(options: UseCreationNarrationOptions = {}) {
-  const { enabled = true, onNarrationStart, onNarrationEnd } = options;
+  const { enabled = true, voiceId, onNarrationStart, onNarrationEnd } = options;
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -187,7 +188,7 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: narration.text }),
+        body: JSON.stringify({ text: narration.text, voiceId }),
         signal: abortRef.current.signal,
       });
 
@@ -258,7 +259,7 @@ export function useCreationNarration(options: UseCreationNarrationOptions = {}) 
       console.error('Narration error:', error);
       playWithWebSpeech(narration.text, playId);
     }
-  }, [enabled, isMuted, stopAll, playWithWebSpeech, onNarrationStart, onNarrationEnd]);
+  }, [enabled, isMuted, voiceId, stopAll, playWithWebSpeech, onNarrationStart, onNarrationEnd]);
 
   const playIntro = useCallback(() => {
     if (!hasPlayedIntro) {

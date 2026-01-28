@@ -10,6 +10,7 @@ interface AudioState {
 }
 
 interface UseAudioNarrationOptions {
+  voiceId?: string;
   onPlayStart?: (messageId: string) => void;
   onPlayEnd?: (messageId: string) => void;
   onError?: (error: string) => void;
@@ -162,7 +163,7 @@ export function useAudioNarration(options: UseAudioNarrationOptions = {}) {
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, voiceId: options.voiceId }),
         signal: abortControllerRef.current.signal,
       });
 

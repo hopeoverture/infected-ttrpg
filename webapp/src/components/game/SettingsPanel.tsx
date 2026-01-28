@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export interface GameSettings {
   aiProvider: 'anthropic' | 'openai' | 'google';
@@ -17,7 +17,7 @@ export interface GameSettings {
 const DEFAULT_SETTINGS: GameSettings = {
   aiProvider: 'anthropic',
   ttsEnabled: false,
-  ttsVoice: 'alloy',
+  ttsVoice: 'adam',
   showSubtitles: true,
   subtitleStyle: 'cinematic',
   autoGenerateImages: true,
@@ -32,14 +32,55 @@ const AI_PROVIDERS = [
   { id: 'google', name: 'Gemini (Google)', description: 'Good balance' }
 ] as const;
 
-const TTS_VOICES = [
-  { id: 'alloy', name: 'Alloy', description: 'Neutral' },
-  { id: 'echo', name: 'Echo', description: 'Warm' },
-  { id: 'fable', name: 'Fable', description: 'Expressive' },
-  { id: 'onyx', name: 'Onyx', description: 'Deep' },
-  { id: 'nova', name: 'Nova', description: 'Friendly' },
-  { id: 'shimmer', name: 'Shimmer', description: 'Clear' }
-];
+// ElevenLabs voices - grouped by style for the UI
+const TTS_VOICES = {
+  narrator: {
+    label: '📖 Narrators',
+    voices: [
+      { id: 'adam', name: 'Adam', desc: 'Deep & clear', gender: 'male' },
+      { id: 'daniel', name: 'Daniel', desc: 'Authoritative British', gender: 'male' },
+      { id: 'elli', name: 'Elli', desc: 'Clear American', gender: 'female' },
+      { id: 'charlotte', name: 'Charlotte', desc: 'Elegant British', gender: 'female' },
+    ]
+  },
+  dramatic: {
+    label: '🎭 Dramatic',
+    voices: [
+      { id: 'arnold', name: 'Arnold', desc: 'Gravelly & intense', gender: 'male' },
+      { id: 'clyde', name: 'Clyde', desc: 'War-worn veteran', gender: 'male' },
+      { id: 'domi', name: 'Domi', desc: 'Strong & intense', gender: 'female' },
+      { id: 'bella', name: 'Bella', desc: 'Warm narrator', gender: 'female' },
+    ]
+  },
+  mysterious: {
+    label: '🌙 Mysterious',
+    voices: [
+      { id: 'marcus', name: 'Marcus', desc: 'Thoughtful & measured', gender: 'male' },
+      { id: 'james', name: 'James', desc: 'Calm Australian', gender: 'male' },
+      { id: 'rachel', name: 'Rachel', desc: 'Calm & composed', gender: 'female' },
+      { id: 'sarah', name: 'Sarah', desc: 'Soft & intimate', gender: 'female' },
+    ]
+  },
+  warm: {
+    label: '☀️ Warm',
+    voices: [
+      { id: 'liam', name: 'Liam', desc: 'Young & earnest', gender: 'male' },
+      { id: 'josh', name: 'Josh', desc: 'Deep American', gender: 'male' },
+    ]
+  },
+  character: {
+    label: '🎪 Character',
+    voices: [
+      { id: 'callum', name: 'Callum', desc: 'Intense Scottish', gender: 'male' },
+      { id: 'charlie', name: 'Charlie', desc: 'Casual Australian', gender: 'male' },
+      { id: 'matilda', name: 'Matilda', desc: 'Warm Australian', gender: 'female' },
+      { id: 'fin', name: 'Fin', desc: 'Irish storyteller', gender: 'male' },
+    ]
+  }
+};
+
+// Flatten for easy lookup
+const ALL_VOICES = Object.values(TTS_VOICES).flatMap(group => group.voices);
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -56,14 +97,23 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const [localSettings, setLocalSettings] = useState<GameSettings>(settings);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
-  // Reset local state when modal opens - intentional pattern for modal initialization
+  // Reset local state when modal opens
   useEffect(() => {
     if (isOpen) {
-      setLocalSettings(settings); // eslint-disable-line react-hooks/set-state-in-effect
-      setHasChanges(false);  
+      setLocalSettings(settings);
+      setHasChanges(false);
     }
-  }, [isOpen, settings]);
+    // Stop preview when closing
+    return () => {
+      if (previewAudio) {
+        previewAudio.pause();
+        previewAudio.src = '';
+      }
+    };
+  }, [isOpen, settings, previewAudio]);
 
   const updateSetting = <K extends keyof GameSettings>(key: K, value: GameSettings[K]) => {
     setLocalSettings(prev => ({ ...prev, [key]: value }));
@@ -79,6 +129,72 @@ export default function SettingsPanel({
     setLocalSettings(DEFAULT_SETTINGS);
     setHasChanges(true);
   };
+
+  // Preview voice
+  const previewVoice = useCallback(async (voiceId: string) => {
+    // Stop any current preview
+    if (previewAudio) {
+      previewAudio.pause();
+      previewAudio.src = '';
+    }
+
+    setIsPreviewPlaying(true);
+
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: "The infected are at the door. You have seconds to decide. What do you do?",
+          voiceId
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Preview failed');
+      }
+
+      const contentType = response.headers.get('Content-Type');
+      if (contentType?.includes('application/json')) {
+        // Fallback response, can't preview
+        setIsPreviewPlaying(false);
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setIsPreviewPlaying(false);
+        setPreviewAudio(null);
+      };
+      
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setIsPreviewPlaying(false);
+        setPreviewAudio(null);
+      };
+
+      setPreviewAudio(audio);
+      await audio.play();
+    } catch (error) {
+      console.error('Voice preview error:', error);
+      setIsPreviewPlaying(false);
+    }
+  }, [previewAudio]);
+
+  const stopPreview = useCallback(() => {
+    if (previewAudio) {
+      previewAudio.pause();
+      previewAudio.src = '';
+      setPreviewAudio(null);
+    }
+    setIsPreviewPlaying(false);
+  }, [previewAudio]);
+
+  const currentVoice = ALL_VOICES.find(v => v.id === localSettings.ttsVoice);
 
   if (!isOpen) return null;
 
@@ -165,17 +281,57 @@ export default function SettingsPanel({
             </label>
             
             {localSettings.ttsEnabled && (
-              <select
-                value={localSettings.ttsVoice}
-                onChange={(e) => updateSetting('ttsVoice', e.target.value)}
-                className="input"
-              >
-                {TTS_VOICES.map(voice => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.name} - {voice.description}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-3">
+                {/* Current voice display */}
+                <div className="flex items-center justify-between p-3 bg-card rounded-lg border border-subtle">
+                  <div>
+                    <div className="font-medium flex items-center gap-2">
+                      {currentVoice?.name || 'Unknown'}
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-surface text-muted">
+                        {currentVoice?.gender === 'male' ? '♂' : '♀'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted">{currentVoice?.desc}</div>
+                  </div>
+                  <button
+                    onClick={() => isPreviewPlaying ? stopPreview() : previewVoice(localSettings.ttsVoice)}
+                    disabled={isPreviewPlaying && !previewAudio}
+                    className="btn text-sm"
+                  >
+                    {isPreviewPlaying ? '⏹ Stop' : '▶ Preview'}
+                  </button>
+                </div>
+
+                {/* Voice selector by category */}
+                <div className="space-y-3">
+                  {Object.entries(TTS_VOICES).map(([styleKey, group]) => (
+                    <div key={styleKey}>
+                      <div className="text-xs font-medium text-muted mb-2">{group.label}</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {group.voices.map(voice => (
+                          <button
+                            key={voice.id}
+                            onClick={() => updateSetting('ttsVoice', voice.id)}
+                            className={`p-2 rounded-lg border text-left transition-all ${
+                              localSettings.ttsVoice === voice.id
+                                ? 'border-gold bg-gold/10'
+                                : 'border-subtle hover:border-medium'
+                            }`}
+                          >
+                            <div className="font-medium text-sm flex items-center gap-1">
+                              {voice.name}
+                              <span className="text-[10px] text-muted">
+                                {voice.gender === 'male' ? '♂' : '♀'}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted truncate">{voice.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             {/* Subtitles */}
@@ -357,4 +513,4 @@ export default function SettingsPanel({
   );
 }
 
-export { DEFAULT_SETTINGS };
+export { DEFAULT_SETTINGS, TTS_VOICES, ALL_VOICES };
